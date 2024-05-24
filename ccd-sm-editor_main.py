@@ -2,126 +2,106 @@ import math
 import random
 import os
 import json
-# pip install Pillow
-import PIL
-os.environ[ 'PYGAME_HIDE_SUPPORT_PROMPT' ] = '1'  # Really pygame?
-# pip install pygame
-import pygame
-# pip install thorpy
-import thorpy
+# Note: Tkinter is usually auto-installed with python, but if you get "ImportError: No module named Tkinter":
+# python -m pip install python3-tk
+import tkinter as tk
+from tkinter import ttk
+#from tkinter.messagebox import showinfo
 import workspace_settings
 
 
+APP_TITLE = "Crystal Clear Design - State Machine Editor"
+APP_LOGO = "CCD_Logo_32x32_on_trans.ico"
+TOOL_SELECT = "Select_ptr_64x64_w_trans.png" # "Select_ptr.png"
+
+
+exit_flag = False
+root_win = tk.Tk()
+
+
+def btn_cb_file():
+    print( f"<File>" )
+
+def btn_cb_edit():
+    print( f"<Edit>" )
+
+def btn_cb_exit():
+    global exit_flag
+    exit_flag = True
+
+def btn_cb_select():
+    print( f"<Select>" )
+
+def window_exit():
+    root.destroy()
+
 def main():
-    pygame.init()
-    pygame.display.set_caption( "Crystal Clear Design - State Machine Editor" )
-    icon = pygame.image.load( "CCD_Logo_32x32_on_trans.png" )
-    pygame.display.set_icon( icon )
-    wksp_settings = workspace_settings.workspace_settings( pygame )
-    app_size = wksp_settings.get_app_size()
-    screen = pygame.display.set_mode( size = app_size, flags = pygame.RESIZABLE )
-    screen.fill( "gray" )
-    # Bind screen to gui elements and set theme.
-    thorpy.set_default_font( "arial", 16 )
-    thorpy.init( screen, thorpy.theme_classic )
+    # Create the app window and position it on the screen where it was last placed.
+    global root_win  #    root_win = tk.Tk()
+    root_win.title( APP_TITLE )
 
-    menu_buttons = [
-        thorpy.Button( "File" ),
-        thorpy.Button( "Edit" ),
-        thorpy.Button( "Exit" ) ]
-    menu_group = thorpy.Group( menu_buttons, mode = "h", margins = ( 0, 0 ), gap = 0, align = "top" )
-    #menu_group = thorpy.Box(menu_buttons, sort_immediately = False )
-    #menu_group.sort_children( mode = "grid", nx = 100, ny = 1 )
-    #menu_group.stick_to( screen, "left", "left", delta = ( 0, 0 ) )
-    menu_group.set_topleft( 0, 0 )
+    # Use the current monitor screen size to set maximums.
+    screen_width = root_win.winfo_screenwidth()
+    screen_height = root_win.winfo_screenheight()
+    wksp_settings = workspace_settings.workspace_settings( screen_width, screen_height )
+    ( app_wid, app_hgt ) = wksp_settings.get_app_size()
+    ( app_lft, app_top ) = wksp_settings.get_app_posn()
+    app_geom_str = f"{app_wid}x{app_hgt}+{app_lft}+{app_top}"
+    #print( f"geom = {app_geom_str}" )
+    root_win.geometry( app_geom_str )
+    root_win.resizable( True, True )
+    root_win.iconbitmap( APP_LOGO )
+    root_win.minsize( 100, 100 )
 
-    tool_buttons = [
-        thorpy.Button( "Select" ),
-        #button.set_topleft( 0, 0 )
-        thorpy.Button( "Start" ),
-        thorpy.Button( "State" ),
-        thorpy.Button( "Transition" ),
-        thorpy.Button( "Stop" ) ]
-    tool_group = thorpy.Group( tool_buttons, margins = ( 0, 0 ), gap = 0, nx = 1, ny = "auto", align = "left" )
-    #tool_group = thorpy.TitleBox("Tools", tool_buttons, sort_immediately = False, align = "top" )
-    #tool_group.sort_children( mode = "grid", nx = 1, ny = 100 )
-    #tool_group.stick_to( screen, "top", "top", delta = ( 0, 0 ) )
+    # Track main app window size & placement.
+    def win_resize_cb( event ):
+        if event.widget == root_win:
+            wksp_settings.set_app_width(  event.width )
+            wksp_settings.set_app_height( event.height )
+            wksp_settings.set_app_left(   event.x )
+            wksp_settings.set_app_top(    event.y )
 
-    app_group = thorpy.Group( [ menu_group, tool_group ], gap = 0, align = "left" )
-    #app_group.stick_to( screen, "left", "left", delta = ( 0, 0 ) )
+    root_win.bind( "<Configure>", win_resize_cb )
 
-    def main_process_input():
-        print("Foo")
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                exit = True
-            elif event.type == pygame.VIDEORESIZE:
-                wksp_settings.set_app_size( event.w, event.h )
-                #scrsize = event.size
-                #screen = pygame.display.set_mode(scrsize,RESIZABLE)
-
-        keys = pygame.key.get_pressed()
-        '''
-        if keys[pygame.K_w]:
-            player_pos.y -= 300 * dt
-        if keys[pygame.K_s]:
-            player_pos.y += 300 * dt
-        if keys[pygame.K_a]:
-            player_pos.x -= 300 * dt
-        if keys[pygame.K_d]:
-            player_pos.x += 300 * dt
-            '''
-        if keys[pygame.K_ESCAPE]:
-            exit = True
-            
-        # fill the screen with a color to wipe away anything from last frame.
-        screen.fill( "white" )
-
-    app_group.func_before = main_process_input
-    player = app_group.get_updater( fps = 60 )
-    player.launch()
+    # Menu Buttons
+    menu_height = 40
+    #print( f"{root_win.winfo_width()}, {root_win.winfo_height()}" )
+    paned_win = ttk.PanedWindow( root_win, width = root_win.winfo_width(), height = root_win.winfo_height(), orient = 'vertical' )
+    paned_win.grid()
+    menu_frame = tk.Frame( paned_win, width = app_wid, height = menu_height )
+    menu_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
     
-    """
-    clock = pygame.time.Clock()
-    exit = False
-    while ( not exit ):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                exit = True
-            elif event.type == pygame.VIDEORESIZE:
-                wksp_settings.set_app_size( event.w, event.h )
-                #scrsize = event.size
-                #screen = pygame.display.set_mode(scrsize,RESIZABLE)
+    button_file = ttk.Button( menu_frame, text = "File", command = btn_cb_file )
+    button_file.grid( row = 0, column = 0 )
 
-        keys = pygame.key.get_pressed()
-        '''
-        if keys[pygame.K_w]:
-            player_pos.y -= 300 * dt
-        if keys[pygame.K_s]:
-            player_pos.y += 300 * dt
-        if keys[pygame.K_a]:
-            player_pos.x -= 300 * dt
-        if keys[pygame.K_d]:
-            player_pos.x += 300 * dt
-            '''
-        if keys[pygame.K_ESCAPE]:
-            exit = True
-            
-        # fill the screen with a color to wipe away anything from last frame.
-        screen.fill( "white" )
+    button_edit = ttk.Button( menu_frame, text = "Edit", command = btn_cb_edit )
+    button_edit.grid( row = 0, column = 1 )
+    
+    button_exit = ttk.Button( menu_frame, text = "Exit", command = lambda: root_win.quit() )
+    button_exit.grid( row = 0, column = 2 )
+    paned_win.add( menu_frame )
 
-        # flip() the display to put your work on screen
-        pygame.display.flip()
+    # Tool Buttons
+    tool_width = 64
+    paned_sub_win = ttk.PanedWindow( root_win, width = tool_width, height = root_win.winfo_height() - menu_height, orient = 'horizontal' )
+    paned_sub_win.grid()
+    
+    tool_frame = tk.Frame( root_win, width = tool_width, height = app_hgt - menu_height )
+    tool_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
+    select_icon = tk.PhotoImage( file = TOOL_SELECT )
+    button_select = ttk.Button( tool_frame, image = select_icon, command = btn_cb_select )
+    button_select.grid( row = 0, column = 0, padx = 0, pady = 0 )
 
-        # limits FPS to 60
-        # dt is delta time in seconds since last frame, used for framerate-independent physics.
-        dt = clock.tick( 60 ) / 1000
-    """
+    frame4 = tk.Frame( paned_sub_win, width = 300, background = 'white' )
+    paned_sub_win.add( tool_frame )
+    paned_sub_win.add( frame4 )
+    paned_win.add( paned_sub_win )
+
+    # Now the framework takes over.
+    root_win.mainloop()
 
     # Save changes to the workspace.
     wksp_settings.sync_to_disk()
-    
-    pygame.quit()
     
 
 if __name__ == "__main__":

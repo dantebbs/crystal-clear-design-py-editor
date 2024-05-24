@@ -1,7 +1,6 @@
 import io
 import os
 import json
-import pygame
 
 
 DEFAULT_FILENAME = "workspace.json"
@@ -26,16 +25,11 @@ DEFAULT_DISPLAY_PERCENT = 60
 class workspace_settings:
     # Preconditions:
     # pygame.init() has been called, and pygame.display.set_mode(...) has not yet been called.
-    def __init__( self, pygame: object, filename: str = DEFAULT_FILENAME ):
-        # Query the size of the monitor.
-        # WARNING: This only works if pygame.init() has been called, but
-        # pygame.display.set_mode(...) has not yet been called.
-        self.pygame = pygame
-        self.display_info = self.pygame.display.Info()
+    def __init__( self, screen_max_x: int, screen_max_y: int, filename: str = DEFAULT_FILENAME ):
         # Select reasonable defaults for when attempted values are invalid.
-        self.max_width = int( self.display_info.current_w )
+        self.max_width = screen_max_x
         self.default_width  = int( self.max_width * DEFAULT_DISPLAY_PERCENT / 100 )
-        self.max_height = int( self.display_info.current_h )
+        self.max_height = screen_max_y
         self.default_height = int( self.max_height * DEFAULT_DISPLAY_PERCENT / 100 )
 
         # See if the workspace file exists in the current folder.
@@ -62,7 +56,6 @@ class workspace_settings:
                 self.create_default_settings()
                 
             sess_file.close()
-            self.set_app_size()
         except FileNotFoundError:
             self.create_default_settings()
 
@@ -85,16 +78,89 @@ class workspace_settings:
             self.settings = json.loads( DEFAULT_JSON )
         except json.JSONDecodeError as e:
             print( f"ERR: JSONDecodeError, {e.msg}, str=\"{DEFAULT_JSON}\", line = {e.lineno}, col = {e.colno}." )
-            self.create_default_settings()
+            exit()
     
     # Write any settings changes to disk.
     def sync_to_disk( self ) -> None:
-        print( f"INFO: Updating \"{self.settings_filename}\" to {self.settings}" )
+        #print( f"INFO: Updating \"{self.settings_filename}\" to {self.settings}" )
         if ( self.are_settings_dirty ):
             sess_file = open( self.settings_filename, "w" )
             json.dump( self.settings, sess_file, ensure_ascii = True, indent = 4 )
             sess_file.close()
             self.are_settings_dirty = False
+
+    # Read a value from current settings.
+    # If valid, return that. If not:
+    #   Set the width to a fraction of the monitor resolution on which the
+    #   application was started.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the key_chain entry, are modified during this call.
+    #
+    # Postconditions:
+    # Either the pre-call value, or if not yet set, the default value is stored in the settings data.
+    #
+    # Returns:
+    # A valid value, first from settings, or the default if not previously set.
+    def get_value( self, key_chain: list, default_value ) -> str:
+        num_levels = len( key_chain )
+        assert( num_levels > 0 )
+        
+        # Drill down into the settings along the designated branch.
+        setting_section = self.settings
+        for key in key_chain:
+            try:
+                setting_section = setting_section[ key ]
+            except KeyError:
+                # This key is not yet in the settings, add it.
+                if ( num_levels > 1 ):
+                    setting_section[ key ] = {}
+                else:
+                    setting_section[ key ] = str( default_value )
+                self.are_settings_dirty = True
+                setting_section = setting_section[ key ]
+            num_levels -= 1
+
+        value = str( default_value )
+        try:
+            value = str( setting_section )
+        except:
+            print( f"WARN: Unable to convert {setting_section} to string. Using default of {value} instead." )
+            pass
+            
+        return value
+
+    # Update a setting.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the key_chain entry, are modified during this call.
+    #
+    # Postconditions:
+    # The value is stored as a string at the branch indexed by key_chain.
+    def set_value( self, key_chain: list, new_value ) -> None:
+        assert( len( key_chain ) > 0 )
+        
+        # Drill down into the settings along the designated branch.
+        setting_section = self.settings
+        for key in key_chain[ : -1 ]:
+            try:
+                setting_section = setting_section[ key ]
+            except KeyError:
+                # This key is not yet in the settings, add it.
+                setting_section[ key ] = {}
+                self.are_settings_dirty = True
+                setting_section = setting_section[ key ]
+
+        if setting_section[ key_chain[ -1 ] ] != str( new_value ):
+            setting_section[ key_chain[ -1 ] ] = str( new_value )
+            self.are_settings_dirty = True
+            #print( f"Set: keys = {key_chain}, new_val = {new_value}" )
 
     # Read the application window's width from current settings.
     # If valid, return that. If not:
@@ -113,27 +179,16 @@ class workspace_settings:
     # Returns:
     # A valid width for the display.
     def get_app_width( self ) -> int:
-        # Make sure settings have an application window section.
-        try:
-            app_settings = self.settings[ "app_window" ]
-        except KeyError:
-            self.set_app_width( width = 0 )
-
-        # Read the width from settings.
-        width_str = "0"
-        try:
-            width_str = str( self.settings[ "app_window" ][ "width" ] )
-        except IndexError:
-            self.set_app_width( width = 0 )
-            width_str = str( self.settings[ "app_window" ][ "width" ] )
-            
-        width = self.default_width
-        try:
-            # This form allows for alternate number bases (hex strings).
-            width = int( width_str, 0 )
-        except ValueError:
-            pass
-
+        # Retrieve from current settings.
+        width_str = self.get_value( [ "app_window", "width" ], self.default_width )
+        
+        # This form allows for alternate number bases (i.e. hex strings).
+        width = int( width_str, 0 )
+        
+        # Validate the retrieved width.
+        if ( width <= 0 or width > self.max_width ):
+            width = self.default_width
+        
         return width
 
     # Set the application window's width into current settings.
@@ -147,42 +202,25 @@ class workspace_settings:
     #
     # Postconditions:
     # width in the settings data is set to a valid width for the display.
-    #
-    # Returns:
-    # A valid width for the display.
-    def set_app_width( self, width: int = 0 ) -> None:
-        # Make sure settings have an application window section.
-        app_settings = {}
-        try:
-            app_settings = self.settings[ "app_window" ]
-        except KeyError:
-            app_settings = DEFAULT_APP_WIN
-            self.settings[ "app_window" ] = app_settings
-            self.are_settings_dirty = True
-
-        if ( width <= 0 or width >= self.max_width ):
-            # Invalid width, don't set it.
-            
-            # See what is already in the settings.
-            try:
-                curr_width = app_settings[ "width" ]
-            except ValueError:
-                # Set to the default instead to ensure visibility.
-                curr_width = self.default_width
-            
-            if ( curr_width > 0 and curr_width <= self.max_width ):
-                width = curr_width
-
-        if ( width <= 0 or width >= self.max_width ):
+    def set_app_width( self, width: int = None ) -> None:
+        if width is None:
             width = self.default_width
 
-        if ( self.settings[ "app_window" ][ "width" ] != width ):
-            # Write the width to settings.
-            self.settings[ "app_window" ][ "width" ] = width
-            self.are_settings_dirty = True
+        if ( width <= 0 or width >= self.max_width ):
+            # Invalid width, can't use it.
+            
+            # See what is already in the settings.
+            curr_width = get_app_width()
+            
+            # Validate what was in settings.
+            if ( curr_width > 0 and curr_width <= self.max_width ):
+                width = curr_width
+            else:
+                width = self.default_width
 
-    # Read the application window's height from current settings.
-    # If valid, return that. If not:
+        self.set_value( [ "app_window", "width" ], width )
+
+    # If the current setting is valid, return that. If not:
     #   Set the height to a fraction of the monitor resolution on which the
     #   application was started.
     #
@@ -198,30 +236,16 @@ class workspace_settings:
     # Returns:
     # A valid height for the display.
     def get_app_height( self ) -> int:
-        # Make sure settings have an application window section.
-        try:
-            app_settings = self.settings[ "app_window" ]
-        except KeyError:
-            self.settings[ "app_window" ] = {
-                "left": 0,
-                "top": 0,
-                "height": 0,
-                "height": 0 }
-
-        # Read the height from settings.
-        height_str = "0"
-        try:
-            height_str = str( self.settings[ "app_window" ][ "height" ] )
-        except IndexError:
-            self.settings[ "app_window" ][ "height" ] = height_str
-            
-        height = self.default_height
-        try:
-            # This form allows for hex strings.
-            height = int( height_str, 0 )
-        except ValueError:
-            pass
-
+        # Retrieve from current settings.
+        height_str = self.get_value( [ "app_window", "height" ], self.default_height )
+        
+        # This form allows for alternate number bases (i.e. hex strings).
+        height = int( height_str, 0 )
+        
+        # Validate the retrieved height.
+        if ( height <= 0 or height > self.max_height ):
+            height = self.default_height
+        
         return height
 
     # Set the application window's height into current settings.
@@ -235,37 +259,23 @@ class workspace_settings:
     #
     # Postconditions:
     # height in the settings data is set to a valid height for the display.
-    def set_app_height( self, height: int = 0 ) -> None:
-        # Make sure settings have an application window section.
-        app_settings = {}
-        try:
-            app_settings = self.settings[ "app_window" ]
-        except KeyError:
-            app_settings = {
-                "left": 0,
-                "top": 0,
-                "width": 0,
-                "height": 0 }
-            self.settings[ "app_window" ] = app_settings
-
-        if ( height <= 0 or height >= self.max_height ):
-            # Invalid height, don't set it.
-            
-            # See what is already in the settings.
-            try:
-                curr_height = app_settings[ "height" ]
-            except ValueError:
-                # Set to the default instead to ensure visibility.
-                curr_height = self.default_height
-            
-            if ( curr_height > 0 and curr_height <= self.max_height ):
-                height = curr_height
-
-        if ( height <= 0 or height >= self.max_height ):
+    def set_app_height( self, height: int = None ) -> None:
+        if height is None:
             height = self.default_height
 
-        # Write the height to settings.
-        self.settings[ "app_window" ][ "height" ] = height
+        if ( height <= 0 or height >= self.max_height ):
+            # Invalid height, can't use it.
+            
+            # See what is already in the settings.
+            curr_height = get_app_height()
+            
+            # Validate what was in settings.
+            if ( curr_height > 0 and curr_height <= self.max_height ):
+                height = curr_height
+            else:
+                height = self.default_height
+
+        self.set_value( [ "app_window", "height" ], height )
 
     # Retrieve the width and height settings for the display.
     #
@@ -303,36 +313,134 @@ class workspace_settings:
     #
     # Param:  width  Must be between 1 and monitor-width.
     # Param:  height  Must be between 1 and monitor-height.
-    def set_app_size( self, width: int = 0, height: int = 0 ) -> None:
+    def set_app_size( self, width: int = None, height: int = None ) -> None:
         # Resolve valid application window size.
         self.set_app_width( width )
         self.set_app_height( height )
-        """
-        # If a zero is passed in, check the current setting to see if it can be used.
-        if ( width <= 0 or width > self.max_width ):
-            try:
-                width = int( str( self.settings[ "app_window" ][ "width" ] ), 0 )
-            except ValueError:
-                # Set to reasonable value if both passed value and JSON value are invalid.
-                width = int( self.display_info.current_w * mon_pct )
-            self.settings[ "app_window" ][ "width"  ] = width
 
-        # If a zero is passed in, check the current setting to see if it can be used.
-        if ( height <= 0 or height > self.display_info.current_h ):
-            try:
-                height = int( str( self.settings[ "app_window" ][ "height" ] ), 0 )
-            except ValueError:
-                # Set to reasonable value if both passed value and JSON value are invalid.
-                height = int( self.display_info.current_h * mon_pct )
-            self.settings[ "app_window" ][ "height" ] = height
-        """
+    # Read the application window's left position ( x ) from current settings.
+    # If valid, return that. If not:
+    #   Set the left to a fixed default.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the "app_window" section are modified during this call.
+    #
+    # Postconditions:
+    # left in the settings data is set to a valid position for the display.
+    #
+    # Returns:
+    # A valid left position for the display.
+    def get_app_left( self ) -> int:
+        # Retrieve from current settings.
+        left_str = self.get_value( [ "app_window", "left" ], DEFAULT_APP_LEFT )
 
-    def get_app_topleft( self ) -> tuple:
-        pass
+        # This form allows for alternate number bases (i.e. hex strings).
+        left = int( left_str, 0 )
+
+        # Validate the retrieved left.
+        if ( left < 0 or left > self.max_width ):
+            left = DEFAULT_APP_LEFT
+
+        return left
+        
+
+    # Set the application window's left position ( x ) into current settings.
+    # If valid, new value is stored.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the "app_window" section are modified during this call.
+    #
+    # Postconditions:
+    # left in the settings data is set to a valid left position for the display.
+    def set_app_left( self, left: int = None ) -> None:
+        if left is None:
+            left = DEFAULT_APP_LEFT
+
+        if ( left < 0 or left >= self.max_width ):
+            # Invalid left position, don't set it.
+            # Use what is already in the settings.
+            left = get_app_left()
+
+        self.set_value( [ "app_window", "left" ], left )
+
+    # Read the application window's top position ( y ) from current settings.
+    # If valid, return that. If not:
+    #   Set the top to a fixed default.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the "app_window" section are modified during this call.
+    #
+    # Postconditions:
+    # top in the settings data is set to a valid position for the display.
+    #
+    # Returns:
+    # A valid top position for the display.
+    def get_app_top( self ) -> int:
+        # Retrieve from current settings.
+        top_str = self.get_value( [ "app_window", "top" ], DEFAULT_APP_TOP )
+
+        # This form allows for alternate number bases (i.e. hex strings).
+        top = int( top_str, 0 )
+
+        # Validate the retrieved top.
+        if ( top < 0 or top > self.max_height ):
+            top = DEFAULT_APP_TOP
+
+        return top
+
+    # Set the application window's top position ( y ) into current settings.
+    # If valid, new value is stored.
+    #
+    # Preconditions:
+    # self.settings is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the "app_window" section are modified during this call.
+    #
+    # Postconditions:
+    # top in the settings data is set to a valid top position for the display.
+    def set_app_top( self, top: int = None ) -> None:
+        if top is None:
+            top = DEFAULT_APP_TOP
+
+        if ( top < 0 or top >= self.max_height ):
+            # Invalid top position, don't set it.
+            # Use what is already in the settings.
+            top = get_app_top()
+
+        self.set_value( [ "app_window", "top" ], top )
+
+    # Retrieve window position from settings.
+    #
+    # Preconditions:
+    # None.
+    #
+    # Invariants:
+    # No other settings are modified during this call.
+    #
+    # Postconditions:
+    # left and top are internally set to valid values for the display monitor on which
+    # the app was launched.
+    #
+    # Returns:
+    # A tuple containing ( left, top ) pixel coordinates of the application window.
+    def get_app_posn( self ) -> tuple:
+        left = self.get_app_left()
+        top = self.get_app_top()
+        return ( left, top )
 
     # Confirm the requested left and top are valid for the display. If valid update the
     # setting(s). If either is invalid, first check the current setting and if valid just
-    # keep it. If current and requested are both invalid, set to a fixed value.
+    # keep it. If current and requested are both invalid, set to a fixed default value.
     #
     # Preconditions:
     # None.
@@ -346,6 +454,7 @@ class workspace_settings:
     #
     # Param:  width  Must be between 1 and monitor-width.
     # Param:  height  Must be between 1 and monitor-height.
-    def set_app_topleft( self, left: int = -1, top: int = -1 ) -> None:
-        pass
+    def set_app_posn( self, left: int = None, top: int = None ) -> None:
+        set_app_left( left )
+        set_app_top( top )
 
