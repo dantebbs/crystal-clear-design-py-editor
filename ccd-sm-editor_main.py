@@ -11,8 +11,13 @@ import workspace_settings
 
 
 APP_TITLE = "Crystal Clear Design - State Machine Editor"
-APP_LOGO = "CCD_Logo_32x32_on_trans.ico"
-TOOL_SELECT = "Select_ptr_64x64_w_trans.png" # "Select_ptr.png"
+IMAGES_FOLDER = "./images/"
+APP_LOGO    = f"{IMAGES_FOLDER}Logo_CCD_32x32.ico"
+TOOL_SELECT = f"{IMAGES_FOLDER}Tool_Select_64x64.png"
+TOOL_STARTS = f"{IMAGES_FOLDER}Tool_Start_State_64x64.png"
+TOOL_STATEM = f"{IMAGES_FOLDER}Tool_State_Machine_64x64.png"
+TOOL_TRANSI = f"{IMAGES_FOLDER}Tool_Transition_64x64.png"
+TOOL_STOPST = f"{IMAGES_FOLDER}Tool_Stop_State_64x64.png"
 
 
 exit_flag = False
@@ -31,6 +36,18 @@ def btn_cb_exit():
 
 def btn_cb_select():
     print( f"<Select>" )
+
+def btn_cb_starts():
+    print( f"<Start State>" )
+
+def btn_cb_statem():
+    print( f"<State Machine>" )
+
+def btn_cb_transi():
+    print( f"<Transition>" )
+
+def btn_cb_stopst():
+    print( f"<Stop State>" )
 
 def window_exit():
     root.destroy()
@@ -64,9 +81,9 @@ def main():
     root_win.bind( "<Configure>", win_resize_cb )
 
     # Menu Buttons
-    menu_height = 40
+    menu_height = 35
     #print( f"{root_win.winfo_width()}, {root_win.winfo_height()}" )
-    paned_win = ttk.PanedWindow( root_win, width = root_win.winfo_width(), height = root_win.winfo_height(), orient = 'vertical' )
+    paned_win = tk.PanedWindow( root_win, width = root_win.winfo_width(), height = root_win.winfo_height(), orient = 'vertical', sashwidth = 0 )
     paned_win.grid()
     menu_frame = tk.Frame( paned_win, width = app_wid, height = menu_height )
     menu_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
@@ -79,22 +96,38 @@ def main():
     
     button_exit = ttk.Button( menu_frame, text = "Exit", command = lambda: root_win.quit() )
     button_exit.grid( row = 0, column = 2 )
-    paned_win.add( menu_frame )
+    paned_win.add( menu_frame, minsize = menu_height )
 
     # Tool Buttons
     tool_width = 64
-    paned_sub_win = ttk.PanedWindow( root_win, width = tool_width, height = root_win.winfo_height() - menu_height, orient = 'horizontal' )
-    paned_sub_win.grid()
-    
+    paned_sub_win = tk.PanedWindow( root_win, width = tool_width, height = root_win.winfo_height() - menu_height, orient = 'horizontal', sashwidth = 0 )
+    paned_sub_win.grid()    
     tool_frame = tk.Frame( root_win, width = tool_width, height = app_hgt - menu_height )
     tool_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
+    
     select_icon = tk.PhotoImage( file = TOOL_SELECT )
     button_select = ttk.Button( tool_frame, image = select_icon, command = btn_cb_select )
     button_select.grid( row = 0, column = 0, padx = 0, pady = 0 )
 
-    frame4 = tk.Frame( paned_sub_win, width = 300, background = 'white' )
+    starts_icon = tk.PhotoImage( file = TOOL_STARTS )
+    button_starts = ttk.Button( tool_frame, image = starts_icon, command = btn_cb_starts )
+    button_starts.grid( row = 1, column = 0, padx = 0, pady = 0 )
+
+    statem_icon = tk.PhotoImage( file = TOOL_STATEM )
+    button_statem = ttk.Button( tool_frame, image = statem_icon, command = btn_cb_statem )
+    button_statem.grid( row = 2, column = 0, padx = 0, pady = 0 )
+
+    transi_icon = tk.PhotoImage( file = TOOL_TRANSI )
+    button_transi = ttk.Button( tool_frame, image = transi_icon, command = btn_cb_transi )
+    button_transi.grid( row = 3, column = 0, padx = 0, pady = 0 )
+
+    stopst_icon = tk.PhotoImage( file = TOOL_STOPST )
+    button_stopst = ttk.Button( tool_frame, image = stopst_icon, command = btn_cb_stopst )
+    button_stopst.grid( row = 4, column = 0, padx = 0, pady = 0 )
+
+    work_frame = tk.Frame( paned_sub_win, width = app_wid - tool_width, background = 'white' )
     paned_sub_win.add( tool_frame )
-    paned_sub_win.add( frame4 )
+    paned_sub_win.add( work_frame )
     paned_win.add( paned_sub_win )
 
     # Now the framework takes over.
