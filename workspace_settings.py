@@ -210,7 +210,7 @@ class workspace_settings:
             # Invalid width, can't use it.
             
             # See what is already in the settings.
-            curr_width = get_app_width()
+            curr_width = self.get_app_width()
             
             # Validate what was in settings.
             if ( curr_width > 0 and curr_width <= self.max_width ):
@@ -267,7 +267,7 @@ class workspace_settings:
             # Invalid height, can't use it.
             
             # See what is already in the settings.
-            curr_height = get_app_height()
+            curr_height = self.get_app_height()
             
             # Validate what was in settings.
             if ( curr_height > 0 and curr_height <= self.max_height ):

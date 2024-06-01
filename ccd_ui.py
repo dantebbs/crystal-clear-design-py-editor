@@ -6,6 +6,15 @@ from tkinter import ttk
 #from tkinter.messagebox import showinfo
 import workspace_settings
 
+'''
+import heirarchical_state_machine
+try:
+    import heirarchical_state_machine
+except ImportError:
+    print( f"Unable to import module \"hierarchical_state_machine\"." )
+    print( f"Run ...\npython -m pip install hierarchical_state_machine\n       ... then try again." )
+    quit()
+'''
 
 APP_TITLE = "Crystal Clear Design - State Machine Editor"
 APP_LOGO    = f"Logo_CCD_32x32.ico"
@@ -16,29 +25,40 @@ TOOL_TRANSI = f"Tool_Transition_64x64.png"
 TOOL_STOPST = f"Tool_Stop_State_64x64.png"
 
 
-# Since Tkinter uses callbacks to propagate events, and there is no provision for attaching the
-# class instance to the callbacks, using a global-style instance to tie things together, and
-# thin wrappers.
-#TRYING lambdas instead...
-#g_ui = None
-
+class ccd_ui_action():
+    def __init__( self ):
+        pass
 
 class ccd_ui_layout( tk.Tk ):
-    def __init__( self, images_folder: str, *args, **kwargs ):
+    def __init__( self, app_args: object, images_folder: str, *args, **kwargs ):
+        self.args = app_args
         self.images = images_folder
+        
+        # Create the app window
         tk.Tk.__init__( self, *args, **kwargs )
-
-        # Create the app window and position it on the screen where it was last placed.
         self.title( APP_TITLE )
 
-        # Use the current monitor screen size to set maximums.
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        self.wksp_settings = workspace_settings.workspace_settings( screen_width, screen_height )
-        ( app_wid, app_hgt ) = self.wksp_settings.get_app_size()
-        ( app_lft, app_top ) = self.wksp_settings.get_app_posn()
+        # Start with current monitor screen size.
+        app_wid = self.winfo_screenwidth()
+        app_hgt = self.winfo_screenheight()
+        app_lft = 0
+        app_top = 0
         app_geom_str = f"{app_wid}x{app_hgt}+{app_lft}+{app_top}"
-        #print( f"geom = {app_geom_str}" )
+
+        # Use screen width and height as defaults in case they are needed.
+        self.wksp_settings = workspace_settings.workspace_settings( app_wid, app_hgt )
+        
+        # If no request for fullscreen, see if geometry was specified.
+        if ( self.args.want_fullscreen() == False ):
+            if self.args.want_geometry():
+                app_geom_str = self.args.get_geometry()
+            else:
+                # Position it on the screen where it was last placed.
+                ( app_wid, app_hgt ) = self.wksp_settings.get_app_size()
+                ( app_lft, app_top ) = self.wksp_settings.get_app_posn()
+                app_geom_str = f"{app_wid}x{app_hgt}+{app_lft}+{app_top}"
+
+        print( f"Window = {app_geom_str}" )
         self.geometry( app_geom_str )
         self.resizable( True, True )
         self.iconbitmap( images_folder + APP_LOGO )

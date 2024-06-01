@@ -4,20 +4,21 @@ import os
 import tkinter as tk
 from tkinter import ttk
 #from tkinter.messagebox import showinfo
-#import workspace_settings
-import ccd_ui_layout
+
+import ccd_args
+import ccd_ui
+import hierarchical_state_machine as hsm
 
 
 IMAGES_FOLDER = "images\\"
 
 
-exit_flag = False
-
-
 def main():
+    args = ccd_args.ccd_args( __file__ )
+    
     app_path = os.path.dirname( os.path.realpath( __file__ ) )
     images_path = app_path + "\\" + IMAGES_FOLDER
-    ui = ccd_ui_layout.ccd_ui_layout( images_path )
+    ui = ccd_ui.ccd_ui_layout( args, images_path )
     
     # Ready for the framework to take over.
     ui.run()
