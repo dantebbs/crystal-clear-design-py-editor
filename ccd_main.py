@@ -7,7 +7,6 @@ from tkinter import ttk
 
 import ccd_args
 import ccd_ui
-import hierarchical_state_machine as hsm
 
 
 IMAGES_FOLDER = "images\\"

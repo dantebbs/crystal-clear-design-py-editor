@@ -66,5 +66,5 @@ class ccd_args():
     def get_start_file( self ) -> str:
         result = ""
         if self.args.sm:
-            result = self.args.sm[ 0 ]
+            result = self.args.sm
         return result
