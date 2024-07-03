@@ -153,9 +153,17 @@ class ccd_ui_layout( tk.Tk ):
         self.edit_menu.add_command( label = "Undo" , state = "disabled", command = lambda: self.edit_click_cb( "Undo"  ) )
         self.edit_menu.add_command( label = "Redo" , state = "disabled", command = lambda: self.edit_click_cb( "Redo"  ) )
         
+        self.button_view = tk.Menubutton( menu_frame, text = "View", indicatoron = False, padx = 10, relief = "raised" )
+        self.button_view.grid( row = 0, column = 2 )
+        self.view_menu = tk.Menu( self.button_view, tearoff = False )
+        self.button_view[ "menu" ] = self.view_menu
+        self.view_menu.add_command( label = "All"  , state = "normal", command = lambda: self.view_click_cb( "All"   ) )
+        self.view_menu.add_command( label = "State", state = "normal", command = lambda: self.view_click_cb( "State" ) )
+        self.view_menu.add_command( label = "JSON" , state = "normal", command = lambda: self.view_click_cb( "JSON"  ) )
+        
         self.button_exit = tk.Menubutton( menu_frame, text = "Exit", indicatoron = False, padx = 10, relief = "raised" )
         self.button_exit.bind( sequence = "<Button-1>", func = self.exit_click_cb )
-        self.button_exit.grid( row = 0, column = 2 )
+        self.button_exit.grid( row = 0, column = 3 )
         
         self.paned_win.add( menu_frame, minsize = menu_height )
 
@@ -216,6 +224,9 @@ class ccd_ui_layout( tk.Tk ):
 
     def edit_click_cb( self, option_name ):
         print( f"Edit -> {option_name}" )
+
+    def view_click_cb( self, option_name ):
+        print( f"View -> {option_name}" )
 
     def exit_click_cb( self, event ):
         print( f"Exit" )

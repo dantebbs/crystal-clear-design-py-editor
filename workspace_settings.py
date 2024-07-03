@@ -365,7 +365,7 @@ class workspace_settings:
         if ( left < 0 or left >= self.max_width ):
             # Invalid left position, don't set it.
             # Use what is already in the settings.
-            left = get_app_left()
+            left = self.get_app_left()
 
         self.set_value( [ "app_window", "left" ], left )
 
@@ -415,7 +415,7 @@ class workspace_settings:
         if ( top < 0 or top >= self.max_height ):
             # Invalid top position, don't set it.
             # Use what is already in the settings.
-            top = get_app_top()
+            top = self.get_app_top()
 
         self.set_value( [ "app_window", "top" ], top )
 
