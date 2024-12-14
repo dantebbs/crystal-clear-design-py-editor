@@ -3,29 +3,22 @@ import os
 import json
 
 
-DEFAULT_WS_FILENAME = "workspace.json"
-DEFAULT_APP_LEFT = 200
-DEFAULT_APP_TOP = 100
-DEFAULT_APP_WIN = f"""{{
-    "left": {DEFAULT_APP_LEFT},
-    "top": {DEFAULT_APP_TOP},
-    "width": 0,
-    "height": 0
+HSM_DEFAULT_FILENAME = "hsm_model.json"
+DEFAULT_SM_REC = f"""{{
+    "name": "foo_bar"
   }}"""
 DEFAULT_JSON = f"""{{
-  "app_window": {DEFAULT_APP_WIN}
+  "sm_widget": {DEFAULT_SM_REC}
 }}
 """
-# Default to an arbitrary fraction of width and height of the current monitor if invalid.
-DEFAULT_DISPLAY_PERCENT = 60
 
 
 # Manage the settings which the user wants to keep across development sessions using a JSON data
 # file. Default settings are used if either the file or the field is not available.
-class workspace_settings:
+class hsm_model:
     # Preconditions:
     # pygame.init() has been called, and pygame.display.set_mode(...) has not yet been called.
-    def __init__( self, screen_max_x: int, screen_max_y: int, filename: str = DEFAULT_WS_FILENAME ):
+    def __init__( self, screen_max_x: int, screen_max_y: int, filename: str = DEFAULT_FILENAME ):
         # Select reasonable defaults for when attempted values are invalid.
         self.max_width = screen_max_x
         self.default_width  = int( self.max_width * DEFAULT_DISPLAY_PERCENT / 100 )
@@ -64,7 +57,7 @@ class workspace_settings:
 
     def create_default_settings( self ) -> None:
         # Reset the filename to ensure a valid default.
-        self.settings_filename = DEFAULT_WS_FILENAME
+        self.settings_filename = DEFAULT_FILENAME
         print( f"INFO: Creating default workspace file {self.settings_filename}." )
 
         try:

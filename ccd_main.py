@@ -1,10 +1,4 @@
 import os
-# Note: Tkinter is usually auto-installed with python, but if you get "ImportError: No module named Tkinter":
-# python -m pip install python3-tk
-import tkinter as tk
-from tkinter import ttk
-#from tkinter.messagebox import showinfo
-
 import ccd_args
 import ccd_ui
 

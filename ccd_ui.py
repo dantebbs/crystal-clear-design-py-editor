@@ -31,71 +31,165 @@ TOOL_NAME_STATEM = f"StateMachine"
 TOOL_NAME_TRANSI = f"Transition"
 TOOL_NAME_STOPST = f"StopState"
 
-# Use even numbers for these to avoid misalignments.
-SM_LINE_SIZE = 4
-SM_CRNR_SIZE = 12
+# Use even numbers for these sizes to avoid misalignments.
+BRD_WEIGHT_THN = 0
+BRD_WEIGHT_MED = 1
+BRD_WEIGHT_THK = 2
+
+THN_LINE_SIZE = 2
+THN_CRNR_SIZE = 10
+THN_TITL_SIZE = 16
+
+MED_LINE_SIZE = 4
+MED_CRNR_SIZE = 12
+MED_TITL_SIZE = 18
+
+THK_LINE_SIZE = 8
+THK_CRNR_SIZE = 14
+THK_TITL_SIZE = 20
 
 this_module = sys.modules[__name__]
 
 
+# The State Machine Widget
 class sm_widget( tk.Canvas ):
     def __init__( self, *args, **kwargs ):
         super( sm_widget, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
-        self.title_size = SM_CRNR_SIZE * 2
+        self.bind( "<Configure>", self.sm_wid_resize_cb )
+        self.drag_start_x = 0
+        self.drag_start_y = 0
         
+        self.set_border_thickness( BRD_WEIGHT_THN )
+        self.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.paint()
+
+    # Track widget size & placement.
+    def sm_wid_resize_cb( self, event ):
+        if event.widget == self:
+            self.update_model()
+
+    def update_model( self ):
+        return
+        
+    def set_border_thickness( self, weight: int ):
+        if ( weight == BRD_WEIGHT_THN ):
+            self.line_size = THN_LINE_SIZE
+            self.crnr_size = THN_CRNR_SIZE
+            self.titl_size = THN_TITL_SIZE
+            self.paint()
+        if ( weight == BRD_WEIGHT_MED ):
+            self.line_size = MED_LINE_SIZE
+            self.crnr_size = MED_CRNR_SIZE
+            self.titl_size = MED_TITL_SIZE
+            self.paint()
+        if ( weight == BRD_WEIGHT_THK ):
+            self.line_size = THK_LINE_SIZE
+            self.crnr_size = THK_CRNR_SIZE
+            self.titl_size = THK_TITL_SIZE
+            self.paint()
+
+    def drag_start( self, event ):
+        self.drag_start_x = event.x
+        self.drag_start_y = event.y
+    
+    def drag_motion( self, event ):
+        new_x = self.winfo_x() - self.drag_start_x + event.x
+        new_y = self.winfo_y() - self.drag_start_y + event.y
+        self.place( x = new_x, y = new_y )
+    
     def paint( self ):
+        # Blank out the canvas.
+        self.delete( "all" )
+        
         # Get the pixel indeces of the bottom-right of the widget.
         self.update_idletasks()
-        rgt = self.winfo_width() - 1
-        btm = self.winfo_height() - 1
+        rgt = self.winfo_width()
+        btm = self.winfo_height()
 
         # Create a rounded rectangle along the edges of this canvas.
+        # Note: For widths greater than 1, x and y coordinates relate
+        #       to the center of the line or arc.
+        top_ctr_y = 0   + ( self.line_size / 2 )
+        rgt_ctr_x = rgt - ( self.line_size / 2 )
+        btm_ctr_y = btm - ( self.line_size / 2 )
+        lft_ctr_x = 0   + ( self.line_size / 2 )
+        # Compute Arc Endpoints
+        # Note: The x,y coordinates for the arc are to enclose a full ellipse.
+        top_arc_y = 0   + ( self.crnr_size * 2 )
+        rgt_arc_x = rgt - ( self.crnr_size * 2 )
+        btm_arc_y = btm - ( self.crnr_size * 2 )
+        lft_arc_x = 0   + ( self.crnr_size * 2 )
+
+        # Top Line
         self.create_line(
-            SM_CRNR_SIZE, ( SM_LINE_SIZE / 2 ),
-            rgt - SM_CRNR_SIZE, ( SM_LINE_SIZE / 2 ),
-            width = SM_LINE_SIZE )
+            0   + self.crnr_size, top_ctr_y,
+            rgt - self.crnr_size, top_ctr_y,
+            width = self.line_size )
+            
+        # Upper Right Corner
+        # Note: The bottom and right sides of the arc outline box
+        #       specify the last position, not last + 1.
         self.create_arc(
-            rgt - ( SM_CRNR_SIZE * 2 ), ( SM_LINE_SIZE / 2 ),
-            rgt - ( SM_LINE_SIZE / 2 ), ( SM_CRNR_SIZE * 2 ) - 1,
+            rgt_arc_x    , top_ctr_y    ,
+            rgt_ctr_x - 1, top_arc_y - 1,
             start = 0, extent = 90,
-            style = 'arc', width = SM_LINE_SIZE )
+            style = 'arc', width = self.line_size )
+            
+        # Right Line
         self.create_line(
-            rgt - ( SM_LINE_SIZE / 2 ), SM_CRNR_SIZE,
-            rgt - ( SM_LINE_SIZE / 2 ), btm - SM_CRNR_SIZE,
-            width = SM_LINE_SIZE )
+            rgt_ctr_x, 0   + self.crnr_size,
+            rgt_ctr_x, btm - self.crnr_size,
+            width = self.line_size )
+            
+        # Bottom Right Corner
         self.create_arc(
-            rgt - ( SM_CRNR_SIZE * 2 ), btm - ( SM_CRNR_SIZE * 2 ),
-            rgt - ( SM_LINE_SIZE / 2 ), btm - ( SM_LINE_SIZE / 2 ),
+            rgt_arc_x    , btm_arc_y    ,
+            rgt_ctr_x - 1, btm_ctr_y - 1,
             start = 270, extent = 90,
-            style = 'arc', width = SM_LINE_SIZE )
+            style = 'arc', width = self.line_size )
+            
+        # Bottom Line
         self.create_line(
-            rgt - SM_CRNR_SIZE, btm - ( SM_LINE_SIZE / 2 ),
-            SM_CRNR_SIZE, btm - ( SM_LINE_SIZE / 2 ),
-            width = SM_LINE_SIZE )
+            rgt - self.crnr_size, btm_ctr_y,
+            0   + self.crnr_size, btm_ctr_y,
+            width = self.line_size )
+            
+        # Bottom Left Corner
         self.create_arc(
-            ( SM_LINE_SIZE / 2 ), btm - ( SM_CRNR_SIZE * 2 ),
-            ( SM_CRNR_SIZE * 2 ), btm - ( SM_LINE_SIZE / 2 ),
+            lft_ctr_x    , btm_arc_y    ,
+            lft_arc_x - 1, btm_ctr_y - 1,
             start = 180, extent = 90,
-            style = 'arc', width = SM_LINE_SIZE )
+            style = 'arc', width = self.line_size )
+            
+        # Left Line
         self.create_line(
-            ( SM_LINE_SIZE / 2 ), btm - SM_CRNR_SIZE, 
-            ( SM_LINE_SIZE / 2 ), SM_CRNR_SIZE,
-            width = SM_LINE_SIZE )
+            lft_ctr_x, btm - self.crnr_size, 
+            lft_ctr_x, 0   + self.crnr_size,
+            width = self.line_size )
+            
+        # Top Left Corner
         self.create_arc(
-            ( SM_LINE_SIZE / 2 ), ( SM_LINE_SIZE / 2 ),
-            ( SM_CRNR_SIZE * 2 ), ( SM_CRNR_SIZE * 2 ),
+            lft_ctr_x    , top_ctr_y    ,
+            lft_arc_x - 1, top_arc_y - 1,
             start = 90, extent = 90,
-            style = 'arc', width = SM_LINE_SIZE )
+            style = 'arc', width = self.line_size )
+            
         # Add the title bar.
         self.create_line(
-            0  , SM_LINE_SIZE + self.title_size, 
-            rgt, SM_LINE_SIZE + self.title_size, 
-            width = SM_LINE_SIZE )
+            lft_ctr_x, self.line_size + self.titl_size, 
+            rgt_ctr_x, self.line_size + self.titl_size, 
+            width = self.line_size )
+            
+        # Drag the state using the title bar.
+        #drag_rect = self.create_rectangle( 0, 0, rgt, btm )
+        #self.tag_bind( drag_rect, "<Button-1>", self.drag_start )
+        #self.tag_bind( drag_rect, "B1-Motion>", self.drag_motion )
         
 class ccd_ui_layout( tk.Tk ):
     def __init__( self, app_args: object, images_folder: str, *args, **kwargs ):
         self.args = app_args
         self.images = images_folder
+        #self.model = model
         
         # Create the app window
         tk.Tk.__init__( self, *args, **kwargs )
@@ -120,7 +214,7 @@ class ccd_ui_layout( tk.Tk ):
                 ( app_lft, app_top ) = self.wksp_settings.get_app_posn()
                 app_geom_str = f"{app_wid}x{app_hgt}+{app_lft}+{app_top}"
 
-        print( f"Window = {app_geom_str}" )
+        #print( f"Window = {app_geom_str}" )
         self.geometry( app_geom_str )
         self.resizable( True, True )
         self.iconbitmap( images_folder + APP_LOGO )
@@ -198,8 +292,6 @@ class ccd_ui_layout( tk.Tk ):
             self.load_file( self.args.get_start_file() )
             
         self.test_sm = sm_widget( self.work_frame, width = 100, height = 80, bg = 'white' )
-        self.test_sm.grid( row = 0, column = 0, padx = 0, pady = 0 )
-        self.test_sm.paint()
 
     # Track main app window size & placement.
     def win_resize_cb( self, event ):
@@ -270,7 +362,7 @@ class ccd_ui_layout( tk.Tk ):
         tool_idx = 0
         for tool_name in self.tool_names:
             if new_tool_name == tool_name:
-                print( f"<{tool_name}>" )
+                #print( f"<{tool_name}>" )
                 if self.selected_tool_idx != -1:
                     # De-select previous tool.
                     self.tool_buttons[ self.selected_tool_idx ].state( [ '!disabled' ] )
@@ -290,12 +382,15 @@ class ccd_ui_layout( tk.Tk ):
 
     def tool_cb_starts( self, event ):
         self.tool_button_click( TOOL_NAME_STARTS )
+        self.test_sm.set_border_thickness( BRD_WEIGHT_THN )
 
     def tool_cb_statem( self, event ):
         self.tool_button_click( TOOL_NAME_STATEM )
+        self.test_sm.set_border_thickness( BRD_WEIGHT_MED )
 
     def tool_cb_transi( self, event ):
         self.tool_button_click( TOOL_NAME_TRANSI )
+        self.test_sm.set_border_thickness( BRD_WEIGHT_THK )
 
     def tool_cb_stopst( self, event ):
         self.tool_button_click( TOOL_NAME_STOPST )
