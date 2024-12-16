@@ -5,6 +5,7 @@ import sys
 # python -m pip install python3-tk
 import tkinter as tk
 from tkinter import ttk
+from tkinter import *
 #from tkinter.messagebox import showinfo
 import workspace_settings
 
@@ -48,6 +49,9 @@ THK_LINE_SIZE = 8
 THK_CRNR_SIZE = 14
 THK_TITL_SIZE = 20
 
+MIN_SM_WID = 60
+MIN_SM_HGT = 50
+
 this_module = sys.modules[__name__]
 
 
@@ -58,6 +62,10 @@ class sm_widget( tk.Canvas ):
         self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
         self.drag_start_y = 0
+        self.most_wid = -1
+        self.most_hgt = -1
+        self.prev_wid = -1
+        self.prev_hgt = -1
         
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
@@ -97,6 +105,59 @@ class sm_widget( tk.Canvas ):
         new_y = self.winfo_y() - self.drag_start_y + event.y
         self.place( x = new_x, y = new_y )
     
+    def size_start( self, event ):
+        curr_wid = self.winfo_width()
+        curr_hgt = self.winfo_height()
+        self.prev_wid = curr_wid
+        self.prev_hgt = curr_hgt
+        self.most_wid = curr_wid
+        self.most_hgt = curr_hgt
+        self.offs_wid = curr_wid - event.x
+        self.offs_hgt = curr_hgt - event.y
+
+        self.prev_outline = self.create_rectangle(
+            0, 0, self.winfo_width() - 1, self.winfo_height() - 1,
+            outline = "#888888" )
+    
+    def size_motion( self, event ):
+        self.delete( self.prev_outline )
+        
+        temp_wid = event.x + self.offs_wid
+        if temp_wid < MIN_SM_WID:
+            temp_wid = MIN_SM_WID
+        self.prev_wid = temp_wid
+            
+        temp_hgt = event.y + self.offs_wid
+        if temp_hgt < MIN_SM_HGT:
+            temp_hgt = MIN_SM_HGT
+        self.prev_hgt = temp_hgt
+
+        # Expand the canvas if going bigger, so the outline can be seen.
+        expand = False
+        if temp_wid > self.most_wid:
+            self.most_wid = temp_wid
+            expand = True
+        if temp_hgt > self.most_hgt:
+            self.most_hgt = temp_hgt
+            expand = True
+        if expand:
+            self.config( width = self.most_wid, height = self.most_hgt )
+        #print( f"Mov ({temp_wid},{temp_hgt})" )
+
+        self.prev_outline = self.create_rectangle(
+            0, 0, temp_wid - 1, temp_hgt - 1,
+            outline = "#888888" )
+
+    def size_stop( self, event ):
+        temp_wid = event.x + self.offs_wid
+        if temp_wid < MIN_SM_WID:
+            temp_wid = MIN_SM_WID
+        temp_hgt = event.y + self.offs_wid
+        if temp_hgt < MIN_SM_HGT:
+            temp_hgt = MIN_SM_HGT
+        self.config( width = temp_wid, height = temp_hgt )
+        self.paint()
+    
     def paint( self ):
         # Blank out the canvas.
         self.delete( "all" )
@@ -120,6 +181,23 @@ class sm_widget( tk.Canvas ):
         btm_arc_y = btm - ( self.crnr_size * 2 )
         lft_arc_x = 0   + ( self.crnr_size * 2 )
 
+        # Drag the state widget using the title bar.
+        drag_rect = self.create_rectangle(
+            lft_arc_x, self.line_size, rgt_arc_x, self.line_size + self.titl_size,
+            outline = "#FFFFFF", fill = "#FFFFFF",
+            activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
+        self.tag_bind( drag_rect, sequence = "<Button-1>", func = self.drag_start )
+        self.tag_bind( drag_rect, sequence = "<B1-Motion>", func = self.drag_motion )
+        
+        # Resize the state widget using the bottom right corner.
+        size_rect = self.create_rectangle(
+            rgt_arc_x, btm_arc_y, rgt_ctr_x, btm_ctr_y,
+            outline = "#FFFFFF", fill = "#FFFFFF",
+            activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
+        self.tag_bind( size_rect, sequence = "<Button-1>", func = self.size_start )
+        self.tag_bind( size_rect, sequence = "<B1-Motion>", func = self.size_motion )
+        self.tag_bind( size_rect, sequence = "<ButtonRelease-1>", func = self.size_stop )
+        
         # Top Line
         self.create_line(
             0   + self.crnr_size, top_ctr_y,
@@ -174,17 +252,15 @@ class sm_widget( tk.Canvas ):
             start = 90, extent = 90,
             style = 'arc', width = self.line_size )
             
-        # Add the title bar.
+        # Section off the title bar.
         self.create_line(
             lft_ctr_x, self.line_size + self.titl_size, 
             rgt_ctr_x, self.line_size + self.titl_size, 
             width = self.line_size )
             
-        # Drag the state using the title bar.
-        #drag_rect = self.create_rectangle( 0, 0, rgt, btm )
-        #self.tag_bind( drag_rect, "<Button-1>", self.drag_start )
-        #self.tag_bind( drag_rect, "B1-Motion>", self.drag_motion )
-        
+        # Finalize
+
+
 class ccd_ui_layout( tk.Tk ):
     def __init__( self, app_args: object, images_folder: str, *args, **kwargs ):
         self.args = app_args
