@@ -52,6 +52,12 @@ THK_TITL_SIZE = 20
 MIN_SM_WID = 60
 MIN_SM_HGT = 50
 
+# Note: This value must be even and > 0.
+# Lines are routed on multiples of GRID_PIX / 2, and the corners of states are
+# constrained to multiples of GRID_PIX.
+GRID_PIX = 10
+
+
 this_module = sys.modules[__name__]
 
 
@@ -102,8 +108,17 @@ class sm_widget( tk.Canvas ):
     
     def drag_motion( self, event ):
         new_x = self.winfo_x() - self.drag_start_x + event.x
+        # Round it up if closer to next grid point.
+        snap_x = new_x + ( GRID_PIX / 2 )
+        snap_x = int( snap_x / GRID_PIX )
+        snap_x *= GRID_PIX
+        
         new_y = self.winfo_y() - self.drag_start_y + event.y
-        self.place( x = new_x, y = new_y )
+        snap_y = new_y + ( GRID_PIX / 2 )
+        snap_y = int( snap_y / GRID_PIX )
+        snap_y *= GRID_PIX
+        
+        self.place( x = snap_x, y = snap_y )
     
     def size_start( self, event ):
         curr_wid = self.winfo_width()
@@ -125,11 +140,18 @@ class sm_widget( tk.Canvas ):
         temp_wid = event.x + self.offs_wid
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
+        # Round it up if closer to next grid point.
+        snap_x = temp_wid + ( GRID_PIX / 2 )
+        snap_x = int( snap_x / GRID_PIX )
+        temp_wid = snap_x * GRID_PIX
         self.prev_wid = temp_wid
             
         temp_hgt = event.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
+        snap_y = temp_hgt + ( GRID_PIX / 2 )
+        snap_y = int( snap_y / GRID_PIX )
+        temp_hgt = snap_y * GRID_PIX
         self.prev_hgt = temp_hgt
 
         # Expand the canvas if going bigger, so the outline can be seen.
@@ -152,9 +174,18 @@ class sm_widget( tk.Canvas ):
         temp_wid = event.x + self.offs_wid
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
+        # Round it up if closer to next grid point.
+        snap_x = temp_wid + ( GRID_PIX / 2 )
+        snap_x = int( snap_x / GRID_PIX )
+        temp_wid = snap_x * GRID_PIX
+
         temp_hgt = event.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
+        snap_y = temp_hgt + ( GRID_PIX / 2 )
+        snap_y = int( snap_y / GRID_PIX )
+        temp_hgt = snap_y * GRID_PIX
+
         self.config( width = temp_wid, height = temp_hgt )
         self.paint()
     
