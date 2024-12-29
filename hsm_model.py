@@ -4,124 +4,295 @@ import json
 
 
 HSM_DEFAULT_FILENAME = "hsm_model.json"
+DEFAULT_SM_NAME = "unnamed state"
+MIN_SM_WID = 60
+MIN_SM_HGT = 50
 DEFAULT_SM_REC = f"""{{
-    "name": "foo_bar"
-  }}"""
-DEFAULT_JSON = f"""{{
-  "sm_widget": {DEFAULT_SM_REC}
-}}
-"""
+    "name": {DEFAULT_SM_NAME},
+    "lft": 0,
+    "top": 0,
+    "wid": {MIN_SM_WID},
+    "hgt": {MIN_SM_HGT}
+}}"""
 
 
-# Manage the settings which the user wants to keep across development sessions using a JSON data
-# file. Default settings are used if either the file or the field is not available.
+class sm_model:
+    def __init__( self, model_root: object, model_parent: object, lft: int, top: int, wid: int, hgt: int ):
+        self.root = model_root
+        self.parent = model_parent
+        # Start by deserializing the default JSON model.
+        self.model = json.load( DEFAULT_SM_REC )
+        self.set_value( ["lft"], lft )
+        self.set_value( ["top"], top )
+        self.set_value( ["wid"], wid )
+        self.set_value( ["hgt"], hgt )
+
+    # Read a value from the model.
+    # If the value is set, the string is returned. If not set, None is returned.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No model variables, are modified during this call.
+    #
+    # Postconditions:
+    # None.
+    #
+    # Returns:
+    # A valid value from the model, or None if not previously set.
+    def get_value( self, key_chain: list, default_value ) -> str:
+        num_levels = len( key_chain )
+        assert( num_levels > 0 )
+        
+        # Drill down into the model along the designated branch.
+        model_section = self.model
+        for key in key_chain:
+            try:
+                model_section = model_section[ key ]
+            except KeyError:
+                return None
+
+        try:
+            value = str( model_section )
+        except:
+            print( f"WARN: Unable to convert {model_section} to string." )
+            return None
+            
+        return value
+
+    # Update a setting.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No model values outside the key_chain entry, are modified during this call.
+    #
+    # Postconditions:
+    # The value is stored as a string at the branch indexed by key_chain.
+    def set_value( self, key_chain: list, new_value ) -> None:
+        assert( len( key_chain ) > 0 )
+        
+        # Drill down into the model along the designated branch.
+        model_section = self.model
+        for key in key_chain[ : -1 ]:
+            try:
+                model_section = model_section[ key ]
+            except KeyError:
+                # This key is not yet in the settings, add it.
+                model_section[ key ] = {}
+                self.root.model_has_changed = True
+                model_section = model_section[ key ]
+
+        # Only set the value if it has changed.
+        if model_section[ key_chain[ -1 ] ] != str( new_value ):
+            model_section[ key_chain[ -1 ] ] = str( new_value )
+            self.root.model_has_changed = True
+            print( f"SM Set: keys = {key_chain}, new_val = {new_value}" )
+
+    # Read the state machine's widget (upper left) position from the model.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No model variables are modified during this call.
+    #
+    # Postconditions:
+    # Model is identical to before the call.
+    #
+    # Returns:
+    # An x and y tuple for the widget.
+    # Note: x and/or y can be None, check before using.
+    def get_posn( self ) -> ( int, int ):
+        lft_str = self.get_value( [ "lft" ] )
+        lft = None
+        
+        if lft_str != None:
+            # This form allows for alternate number bases (i.e. hex strings).
+            lft = int( lft_str, 0 )
+        
+        top_str = self.get_value( [ "top" ] )
+        top = None
+        
+        if top_str != None:
+            # This form allows for alternate number bases (i.e. hex strings).
+            top = int( top_str, 0 )
+        
+        return ( lft, top )
+
+    # Set the state machine widget's position in the model.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the state machine's left and top positions are modified during this call.
+    #
+    # Postconditions:
+    # left and/or top in the model is updated.
+    def set_posn( self, lft: int = 0, top: int = 0 ) -> None:
+        if ( lft < 0 ):
+            lft = 0
+        self.set_value( [ "lft" ], lft )
+
+        if ( top < 0 ):
+            top = 0
+        self.set_value( [ "top" ], top )
+
+    # Read the state machine's widget width and height from the model.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No model variables are modified during this call.
+    #
+    # Postconditions:
+    # Model is identical to before the call.
+    #
+    # Returns:
+    # A width and height tuple for the widget.
+    # Note: width and/or height can be None, check before using.
+    def get_size( self ) -> ( int, int ):
+        wid_str = self.get_value( [ "wid" ] )
+        wid = None
+        
+        if wid_str != None:
+            # This form allows for alternate number bases (i.e. hex strings).
+            wid = int( wid_str, 0 )
+        
+        hgt_str = self.get_value( [ "hgt" ] )
+        hgt = None
+        
+        if hgt_str != None:
+            # This form allows for alternate number bases (i.e. hex strings).
+            hgt = int( hgt_str, 0 )
+        
+        return ( wid, hgt )
+
+    # Set the state machine widget's size in the model.
+    #
+    # Preconditions:
+    # self.model is a dictionary which has been populated.
+    #
+    # Invariants:
+    # No settings outside the state machine's width and height are modified during this call.
+    #
+    # Postconditions:
+    # width and/or height in the model is updated.
+    def set_size( self, wid: int = MIN_SM_WID, hgt: int = MIN_SM_HGT ) -> None:
+        if ( wid < MIN_SM_WID ):
+            wid = MIN_SM_WID
+        self.set_value( [ "wid" ], wid )
+
+        if ( hgt < MIN_SM_HGT ):
+            hgt = MIN_SM_HGT
+        self.set_value( [ "hgt" ], hgt )
+
+
+
+# The "database" containing the State Machines, Transitions, Actions, and Events in this design.
 class hsm_model:
     # Preconditions:
     # pygame.init() has been called, and pygame.display.set_mode(...) has not yet been called.
-    def __init__( self, screen_max_x: int, screen_max_y: int, filename: str = DEFAULT_FILENAME ):
-        # Select reasonable defaults for when attempted values are invalid.
-        self.max_width = screen_max_x
-        self.default_width  = int( self.max_width * DEFAULT_DISPLAY_PERCENT / 100 )
-        self.max_height = screen_max_y
-        self.default_height = int( self.max_height * DEFAULT_DISPLAY_PERCENT / 100 )
+    def __init__( self, filename: str = HSM_DEFAULT_FILENAME ):
+        self.model_has_changed = False
 
-        # See if the workspace file exists in the current folder.
-        self.settings_filename = filename
+        # See if the model file exists in the current folder.
+        self.model_filename = filename
         if not os.path.isfile( filename ):
-            # File isn't here, create a default workspace in the current folder.
-            print( f"WARN: File {filename} not found when loading workspace file." )
-            self.create_default_settings()
+            # File isn't here, create a default model in the current folder.
+            print( f"WARN: File {filename} not found when loading model file." )
+            self.create_default_model()
         
         # Deserialize the JSON settings.
         try:
-            sess_file = open( self.settings_filename, "r" )
-            if not sess_file:
-                print( f"WARN: There is something wrong with the file {self.settings_filename}, and it can't be opened." )
-                print( f"WARN: Try deleting the file (or renaming it), and starting with fresh settings." )
-                print( f"WARN: Continuing with default settings." )
-                self.settings = json.loads( DEFAULT_JSON )
+            model_file = open( self.model_filename, "r" )
+            if not model_file:
+                print( f"WARN: There is something wrong with the file {self.model_filename}, and it can't be opened." )
+                print( f"WARN: Examine the path and file and make sure it contains valid JSON text." )
+                print( f"WARN: Continuing with an empty model." )
+                self.model = json.loads( DEFAULT_SM_REC )
                 return
 
             try:
-                self.settings = json.load( sess_file )
+                self.model = json.load( sess_file )
             except json.JSONDecodeError as e:
-                print( f"ERR: JSONDecodeError, {e.msg}, file=\"{self.settings_filename}\", line = {e.lineno}, col = {e.colno}." )
-                self.create_default_settings()
+                print( f"ERR: JSONDecodeError, {e.msg}, file=\"{self.model_filename}\", line = {e.lineno}, col = {e.colno}." )
+                self.create_default_model()
                 
-            sess_file.close()
+            model_file.close()
         except FileNotFoundError:
-            self.create_default_settings()
+            self.create_default_model()
 
-        self.are_settings_dirty = False
-        #print( f'wid = {self.settings[ "app_window" ][ "width"  ]}, hgt = {self.settings[ "app_window" ][ "height"  ]}' )
-
-    def create_default_settings( self ) -> None:
+    def create_default_model( self ) -> None:
         # Reset the filename to ensure a valid default.
-        self.settings_filename = DEFAULT_FILENAME
-        print( f"INFO: Creating default workspace file {self.settings_filename}." )
+        self.model_filename = DEFAULT_FILENAME
+        print( f"INFO: Creating default model file {self.model_filename}." )
 
         try:
-            sess_file = open( self.settings_filename, "w" )
-            sess_file.write( DEFAULT_JSON )
-            sess_file.close()
+            model_file = open( self.model_filename, "w" )
+            model_file.write( DEFAULT_JSON )
+            model_file.close()
         except IOError:
-            print( f"ERR: Unable to create file {self.settings_filename}" )
+            print( f"ERR: Unable to create file {self.model_filename}" )
 
         try:
-            self.settings = json.loads( DEFAULT_JSON )
+            self.model = json.loads( DEFAULT_JSON )
         except json.JSONDecodeError as e:
             print( f"ERR: JSONDecodeError, {e.msg}, str=\"{DEFAULT_JSON}\", line = {e.lineno}, col = {e.colno}." )
             exit()
     
     # Write any settings changes to disk.
     def sync_to_disk( self ) -> None:
-        #print( f"INFO: Updating \"{self.settings_filename}\" to {self.settings}" )
-        if ( self.are_settings_dirty ):
-            sess_file = open( self.settings_filename, "w" )
-            json.dump( self.settings, sess_file, ensure_ascii = True, indent = 4 )
-            sess_file.close()
-            self.are_settings_dirty = False
+        print( f"INFO: Updating \"{self.model_filename}\" to {self.model}" )
+        if ( self.model_has_changed ):
+            model_file = open( self.model_filename, "w" )
+            json.dump( self.model, model_file, ensure_ascii = True, indent = 4 )
+            model_file.close()
+            self.model_has_changed = False
 
-    # Read a value from current settings.
+    # Read a value from the model.
     # If valid, return that. If not:
-    #   Set the width to a fraction of the monitor resolution on which the
-    #   application was started.
+    #   Set the value to the supplied default.
     #
     # Preconditions:
-    # self.settings is a dictionary which has been populated.
+    # self.model is a dictionary which has been populated.
     #
     # Invariants:
-    # No settings outside the key_chain entry, are modified during this call.
+    # No model variables outside the key_chain entry, are modified during this call.
     #
     # Postconditions:
-    # Either the pre-call value, or if not yet set, the default value is stored in the settings data.
+    # Either the pre-call value, or if not yet set, the default value as provided.
     #
     # Returns:
-    # A valid value, first from settings, or the default if not previously set.
+    # A valid value, first from the model, or using defaults if not previously set.
     def get_value( self, key_chain: list, default_value ) -> str:
         num_levels = len( key_chain )
         assert( num_levels > 0 )
         
-        # Drill down into the settings along the designated branch.
-        setting_section = self.settings
+        # Drill down into the model along the designated branch.
+        model_section = self.model
         for key in key_chain:
             try:
-                setting_section = setting_section[ key ]
+                model_section = model_section[ key ]
             except KeyError:
-                # This key is not yet in the settings, add it.
+                # This key is not yet in the model, add it.
                 if ( num_levels > 1 ):
-                    setting_section[ key ] = {}
+                    model_section[ key ] = {}
                 else:
-                    setting_section[ key ] = str( default_value )
-                self.are_settings_dirty = True
-                setting_section = setting_section[ key ]
+                    model_section[ key ] = str( default_value )
+                self.model_has_changed = True
+                model_section = model_section[ key ]
             num_levels -= 1
 
         value = str( default_value )
         try:
-            value = str( setting_section )
+            value = str( model_section )
         except:
-            print( f"WARN: Unable to convert {setting_section} to string. Using default of {value} instead." )
+            print( f"WARN: Unable to convert {model_section} to string. Using default of {value} instead." )
             pass
             
         return value
@@ -129,325 +300,31 @@ class hsm_model:
     # Update a setting.
     #
     # Preconditions:
-    # self.settings is a dictionary which has been populated.
+    # self.model is a dictionary which has been populated.
     #
     # Invariants:
-    # No settings outside the key_chain entry, are modified during this call.
+    # No model values outside the key_chain entry, are modified during this call.
     #
     # Postconditions:
     # The value is stored as a string at the branch indexed by key_chain.
     def set_value( self, key_chain: list, new_value ) -> None:
         assert( len( key_chain ) > 0 )
         
-        # Drill down into the settings along the designated branch.
-        setting_section = self.settings
+        # Drill down into the model along the designated branch.
+        model_section = self.model
         for key in key_chain[ : -1 ]:
             try:
-                setting_section = setting_section[ key ]
+                model_section = model_section[ key ]
             except KeyError:
                 # This key is not yet in the settings, add it.
-                setting_section[ key ] = {}
-                self.are_settings_dirty = True
-                setting_section = setting_section[ key ]
+                model_section[ key ] = {}
+                self.model_has_changes = True
+                model_section = model_section[ key ]
 
-        if setting_section[ key_chain[ -1 ] ] != str( new_value ):
-            setting_section[ key_chain[ -1 ] ] = str( new_value )
-            self.are_settings_dirty = True
+        if model_section[ key_chain[ -1 ] ] != str( new_value ):
+            model_section[ key_chain[ -1 ] ] = str( new_value )
+            self.model_has_changes = True
             #print( f"Set: keys = {key_chain}, new_val = {new_value}" )
 
-    # Read the application window's width from current settings.
-    # If valid, return that. If not:
-    #   Set the width to a fraction of the monitor resolution on which the
-    #   application was started.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # width in the settings data is set to a valid width for the display.
-    #
-    # Returns:
-    # A valid width for the display.
-    def get_app_width( self ) -> int:
-        # Retrieve from current settings.
-        width_str = self.get_value( [ "app_window", "width" ], self.default_width )
-        
-        # This form allows for alternate number bases (i.e. hex strings).
-        width = int( width_str, 0 )
-        
-        # Validate the retrieved width.
-        if ( width <= 0 or width > self.max_width ):
-            width = self.default_width
-        
-        return width
-
-    # Set the application window's width into current settings.
-    # If valid, new value is stored.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # width in the settings data is set to a valid width for the display.
-    def set_app_width( self, width: int = None ) -> None:
-        if width is None:
-            width = self.default_width
-
-        if ( width <= 0 or width >= self.max_width ):
-            # Invalid width, can't use it.
-            
-            # See what is already in the settings.
-            curr_width = self.get_app_width()
-            
-            # Validate what was in settings.
-            if ( curr_width > 0 and curr_width <= self.max_width ):
-                width = curr_width
-            else:
-                width = self.default_width
-
-        self.set_value( [ "app_window", "width" ], width )
-
-    # If the current setting is valid, return that. If not:
-    #   Set the height to a fraction of the monitor resolution on which the
-    #   application was started.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # height in the settings data is set to a valid height for the display.
-    #
-    # Returns:
-    # A valid height for the display.
-    def get_app_height( self ) -> int:
-        # Retrieve from current settings.
-        height_str = self.get_value( [ "app_window", "height" ], self.default_height )
-        
-        # This form allows for alternate number bases (i.e. hex strings).
-        height = int( height_str, 0 )
-        
-        # Validate the retrieved height.
-        if ( height <= 0 or height > self.max_height ):
-            height = self.default_height
-        
-        return height
-
-    # Set the application window's height into current settings.
-    # If valid, new value is stored.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # height in the settings data is set to a valid height for the display.
-    def set_app_height( self, height: int = None ) -> None:
-        if height is None:
-            height = self.default_height
-
-        if ( height <= 0 or height >= self.max_height ):
-            # Invalid height, can't use it.
-            
-            # See what is already in the settings.
-            curr_height = self.get_app_height()
-            
-            # Validate what was in settings.
-            if ( curr_height > 0 and curr_height <= self.max_height ):
-                height = curr_height
-            else:
-                height = self.default_height
-
-        self.set_value( [ "app_window", "height" ], height )
-
-    # Retrieve the width and height settings for the display.
-    #
-    # Preconditions:
-    # None.
-    #
-    # Invariants:
-    # No other settings are modified during this call.
-    #
-    # Postconditions:
-    # width and height are unchanged if valid, or set to a valid constant.
-    # See get_app_width() and get_app_height() for treatment of invalid values.
-    #
-    # Returns:
-    # Valid width and height as a two-tuple where ( width, height ) = latest from set_app_size().
-    def get_app_size( self ) -> tuple:
-        width = self.get_app_width()
-        height = self.get_app_height()
-        return ( width, height )
-
-    # Confirm the requested width and height are valid for the display. If valid update the
-    # setting(s). If either is invalid, first check the current setting and if valid just
-    # keep it. If current and requested are both invalid, set to some fraction of the
-    # display/monitor on which the app was opened.
-    #
-    # Preconditions:
-    # None.
-    #
-    # Invariants:
-    # No other settings are modified during this call.
-    #
-    # Postconditions:
-    # width and height are internally set to valid values for the display monitor on which
-    # the app was launched.
-    #
-    # Param:  width  Must be between 1 and monitor-width.
-    # Param:  height  Must be between 1 and monitor-height.
-    def set_app_size( self, width: int = None, height: int = None ) -> None:
-        # Resolve valid application window size.
-        self.set_app_width( width )
-        self.set_app_height( height )
-
-    # Read the application window's left position ( x ) from current settings.
-    # If valid, return that. If not:
-    #   Set the left to a fixed default.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # left in the settings data is set to a valid position for the display.
-    #
-    # Returns:
-    # A valid left position for the display.
-    def get_app_left( self ) -> int:
-        # Retrieve from current settings.
-        left_str = self.get_value( [ "app_window", "left" ], DEFAULT_APP_LEFT )
-
-        # This form allows for alternate number bases (i.e. hex strings).
-        left = int( left_str, 0 )
-
-        # Validate the retrieved left.
-        if ( left < 0 or left > self.max_width ):
-            left = DEFAULT_APP_LEFT
-
-        return left
-        
-
-    # Set the application window's left position ( x ) into current settings.
-    # If valid, new value is stored.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # left in the settings data is set to a valid left position for the display.
-    def set_app_left( self, left: int = None ) -> None:
-        if left is None:
-            left = DEFAULT_APP_LEFT
-
-        if ( left < 0 or left >= self.max_width ):
-            # Invalid left position, don't set it.
-            # Use what is already in the settings.
-            left = self.get_app_left()
-
-        self.set_value( [ "app_window", "left" ], left )
-
-    # Read the application window's top position ( y ) from current settings.
-    # If valid, return that. If not:
-    #   Set the top to a fixed default.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # top in the settings data is set to a valid position for the display.
-    #
-    # Returns:
-    # A valid top position for the display.
-    def get_app_top( self ) -> int:
-        # Retrieve from current settings.
-        top_str = self.get_value( [ "app_window", "top" ], DEFAULT_APP_TOP )
-
-        # This form allows for alternate number bases (i.e. hex strings).
-        top = int( top_str, 0 )
-
-        # Validate the retrieved top.
-        if ( top < 0 or top > self.max_height ):
-            top = DEFAULT_APP_TOP
-
-        return top
-
-    # Set the application window's top position ( y ) into current settings.
-    # If valid, new value is stored.
-    #
-    # Preconditions:
-    # self.settings is a dictionary which has been populated.
-    #
-    # Invariants:
-    # No settings outside the "app_window" section are modified during this call.
-    #
-    # Postconditions:
-    # top in the settings data is set to a valid top position for the display.
-    def set_app_top( self, top: int = None ) -> None:
-        if top is None:
-            top = DEFAULT_APP_TOP
-
-        if ( top < 0 or top >= self.max_height ):
-            # Invalid top position, don't set it.
-            # Use what is already in the settings.
-            top = self.get_app_top()
-
-        self.set_value( [ "app_window", "top" ], top )
-
-    # Retrieve window position from settings.
-    #
-    # Preconditions:
-    # None.
-    #
-    # Invariants:
-    # No other settings are modified during this call.
-    #
-    # Postconditions:
-    # left and top are internally set to valid values for the display monitor on which
-    # the app was launched.
-    #
-    # Returns:
-    # A tuple containing ( left, top ) pixel coordinates of the application window.
-    def get_app_posn( self ) -> tuple:
-        left = self.get_app_left()
-        top = self.get_app_top()
-        return ( left, top )
-
-    # Confirm the requested left and top are valid for the display. If valid update the
-    # setting(s). If either is invalid, first check the current setting and if valid just
-    # keep it. If current and requested are both invalid, set to a fixed default value.
-    #
-    # Preconditions:
-    # None.
-    #
-    # Invariants:
-    # No other settings are modified during this call.
-    #
-    # Postconditions:
-    # right and top are internally set to valid values for the display monitor on which
-    # the app was launched.
-    #
-    # Param:  width  Must be between 1 and monitor-width.
-    # Param:  height  Must be between 1 and monitor-height.
-    def set_app_posn( self, left: int = None, top: int = None ) -> None:
-        set_app_left( left )
-        set_app_top( top )
-
+    def get_new_state_name( self ):
+        return "State_1"

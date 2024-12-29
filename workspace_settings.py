@@ -1,6 +1,7 @@
 import io
 import os
 import json
+import mru
 
 
 DEFAULT_WS_FILENAME = "workspace.json"
@@ -13,14 +14,18 @@ DEFAULT_APP_WIN = f"""{{
     "height": 0
   }}"""
 DEFAULT_JSON = f"""{{
-  "app_window": {DEFAULT_APP_WIN}
+  "app_window": {DEFAULT_APP_WIN},
+  "mru_models": [ "hsm_model.json" ]
 }}
 """
 # Default to an arbitrary fraction of width and height of the current monitor if invalid.
 DEFAULT_DISPLAY_PERCENT = 60
 
+# An arbitrary length for the max number of recently used models to track.
+DEFAULT_MAX_MRU_MODELS = 20
 
-# Manage the settings which the user wants to keep across development sessions using a JSON data
+
+# A Most R# Manage the settings which the user wants to keep across development sessions using a JSON data
 # file. Default settings are used if either the file or the field is not available.
 class workspace_settings:
     # Preconditions:
@@ -31,6 +36,13 @@ class workspace_settings:
         self.default_width  = int( self.max_width * DEFAULT_DISPLAY_PERCENT / 100 )
         self.max_height = screen_max_y
         self.default_height = int( self.max_height * DEFAULT_DISPLAY_PERCENT / 100 )
+
+        # Put a minimal default set in place.
+        try:
+            self.settings = json.loads( DEFAULT_JSON )
+        except json.JSONDecodeError as e:
+            print( f"ERR: JSONDecodeError, {e.msg}, str=\"{DEFAULT_JSON}\", line = {e.lineno}, col = {e.colno}." )
+            exit()
 
         # See if the workspace file exists in the current folder.
         self.settings_filename = filename
@@ -46,14 +58,16 @@ class workspace_settings:
                 print( f"WARN: There is something wrong with the file {self.settings_filename}, and it can't be opened." )
                 print( f"WARN: Try deleting the file (or renaming it), and starting with fresh settings." )
                 print( f"WARN: Continuing with default settings." )
-                self.settings = json.loads( DEFAULT_JSON )
                 return
 
-            try:
-                self.settings = json.load( sess_file )
-            except json.JSONDecodeError as e:
-                print( f"ERR: JSONDecodeError, {e.msg}, file=\"{self.settings_filename}\", line = {e.lineno}, col = {e.colno}." )
-                self.create_default_settings()
+            # Make sure it isn't empty.
+            sess_file_len = os.fstat(sess_file.fileno()).st_size
+            if sess_file_len > 0:
+                try:
+                    self.settings = json.load( sess_file )
+                except json.JSONDecodeError as e:
+                    print( f"ERR: JSONDecodeError, {e.msg}, file=\"{self.settings_filename}\", line = {e.lineno}, col = {e.colno}." )
+                    self.create_default_settings()
                 
             sess_file.close()
         except FileNotFoundError:
@@ -62,28 +76,31 @@ class workspace_settings:
         self.are_settings_dirty = False
         #print( f'wid = {self.settings[ "app_window" ][ "width"  ]}, hgt = {self.settings[ "app_window" ][ "height"  ]}' )
 
+        mru_models = self.get_value( [ "mru_models" ], [] )
+        print( f"mru_models = {mru_models}, type = {type( mru_models )}" )
+        self.mru_models = mru.mru( mru_models, DEFAULT_MAX_MRU_MODELS )
+
+
     def create_default_settings( self ) -> None:
         # Reset the filename to ensure a valid default.
-        self.settings_filename = DEFAULT_WS_FILENAME
         print( f"INFO: Creating default workspace file {self.settings_filename}." )
-
-        try:
-            sess_file = open( self.settings_filename, "w" )
-            sess_file.write( DEFAULT_JSON )
-            sess_file.close()
-        except IOError:
-            print( f"ERR: Unable to create file {self.settings_filename}" )
+        self.settings_filename = DEFAULT_WS_FILENAME
+        self.are_settings_dirty = True
 
         try:
             self.settings = json.loads( DEFAULT_JSON )
         except json.JSONDecodeError as e:
             print( f"ERR: JSONDecodeError, {e.msg}, str=\"{DEFAULT_JSON}\", line = {e.lineno}, col = {e.colno}." )
             exit()
+
+        self.sync_to_disk()
     
     # Write any settings changes to disk.
     def sync_to_disk( self ) -> None:
-        #print( f"INFO: Updating \"{self.settings_filename}\" to {self.settings}" )
-        if ( self.are_settings_dirty ):
+        if self.are_settings_dirty:
+            mru_list = self.mru_models.get_list()
+            self.set_value( [ "mru_models" ], mru_list )
+            #print( f"INFO: Updating \"{self.settings_filename}\" to {self.settings}" )
             sess_file = open( self.settings_filename, "w" )
             json.dump( self.settings, sess_file, ensure_ascii = True, indent = 4 )
             sess_file.close()
@@ -105,7 +122,7 @@ class workspace_settings:
     #
     # Returns:
     # A valid value, first from settings, or the default if not previously set.
-    def get_value( self, key_chain: list, default_value ) -> str:
+    def get_value( self, key_chain: list, default_value: str ) -> str:
         num_levels = len( key_chain )
         assert( num_levels > 0 )
         
@@ -126,7 +143,7 @@ class workspace_settings:
 
         value = str( default_value )
         try:
-            value = str( setting_section )
+            value = setting_section
         except:
             print( f"WARN: Unable to convert {setting_section} to string. Using default of {value} instead." )
             pass
@@ -145,6 +162,7 @@ class workspace_settings:
     # The value is stored as a string at the branch indexed by key_chain.
     def set_value( self, key_chain: list, new_value ) -> None:
         assert( len( key_chain ) > 0 )
+        assert( type( key_chain ) == list )
         
         # Drill down into the settings along the designated branch.
         setting_section = self.settings
@@ -157,10 +175,11 @@ class workspace_settings:
                 self.are_settings_dirty = True
                 setting_section = setting_section[ key ]
 
-        if setting_section[ key_chain[ -1 ] ] != str( new_value ):
-            setting_section[ key_chain[ -1 ] ] = str( new_value )
+        #print( f"new_value = {new_value}, type = {type( new_value )}" )
+        if setting_section[ key_chain[ -1 ] ] != new_value:
+            setting_section[ key_chain[ -1 ] ] = new_value
             self.are_settings_dirty = True
-            #print( f"Set: keys = {key_chain}, new_val = {new_value}" )
+            print( f"Set: keys = {key_chain}, new_val = {new_value}" )
 
     # Read the application window's width from current settings.
     # If valid, return that. If not:
@@ -180,10 +199,7 @@ class workspace_settings:
     # A valid width for the display.
     def get_app_width( self ) -> int:
         # Retrieve from current settings.
-        width_str = self.get_value( [ "app_window", "width" ], self.default_width )
-        
-        # This form allows for alternate number bases (i.e. hex strings).
-        width = int( width_str, 0 )
+        width = self.get_value( [ "app_window", "width" ], self.default_width )
         
         # Validate the retrieved width.
         if ( width <= 0 or width > self.max_width ):
@@ -237,11 +253,8 @@ class workspace_settings:
     # A valid height for the display.
     def get_app_height( self ) -> int:
         # Retrieve from current settings.
-        height_str = self.get_value( [ "app_window", "height" ], self.default_height )
-        
-        # This form allows for alternate number bases (i.e. hex strings).
-        height = int( height_str, 0 )
-        
+        height = self.get_value( [ "app_window", "height" ], self.default_height )
+
         # Validate the retrieved height.
         if ( height <= 0 or height > self.max_height ):
             height = self.default_height
@@ -335,10 +348,7 @@ class workspace_settings:
     # A valid left position for the display.
     def get_app_left( self ) -> int:
         # Retrieve from current settings.
-        left_str = self.get_value( [ "app_window", "left" ], DEFAULT_APP_LEFT )
-
-        # This form allows for alternate number bases (i.e. hex strings).
-        left = int( left_str, 0 )
+        left = self.get_value( [ "app_window", "left" ], DEFAULT_APP_LEFT )
 
         # Validate the retrieved left.
         if ( left < 0 or left > self.max_width ):
@@ -386,10 +396,7 @@ class workspace_settings:
     # A valid top position for the display.
     def get_app_top( self ) -> int:
         # Retrieve from current settings.
-        top_str = self.get_value( [ "app_window", "top" ], DEFAULT_APP_TOP )
-
-        # This form allows for alternate number bases (i.e. hex strings).
-        top = int( top_str, 0 )
+        top = self.get_value( [ "app_window", "top" ], DEFAULT_APP_TOP )
 
         # Validate the retrieved top.
         if ( top < 0 or top > self.max_height ):
@@ -458,3 +465,23 @@ class workspace_settings:
         set_app_left( left )
         set_app_top( top )
 
+    # See if an MRU file path is available.
+    # If not, will return None.
+    def get_latest_used_model( self ) -> str:
+        return self.mru_models.get_at_idx()
+    
+    # Indicate that a model file has been opened for editing, making it the MRU file.
+    #
+    # Preconditions:
+    # None
+    #
+    # Invariants:
+    # Only the self.mru_models member variable is modified. All other settings remain.
+    #
+    # Postconditions:
+    # If the MRU list is maxed out, the oldest (now least recently used) item is dropped.
+    #
+    # Param:  latest  This is a path and filename, valid for the host platform.
+    def set_latest_used_model( self, latest: str ) -> None:
+        self.mru_models.touch( latest )
+        self.are_settings_dirty = True

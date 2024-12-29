@@ -1,0 +1,24 @@
+{
+    "events": [
+        "timeout_1000ms"
+    ],
+    "states": {
+        "start": {
+            "tran": {
+                "auto": {
+                    "dest": "Counting Seconds"
+                }
+            }
+        },
+        "Counting Seconds": {
+            "entry": [
+                "update_display(seconds_counted)"
+            ],
+            "tran": {
+                "timeout_1000ms": {
+                    "dest": "Counting Seconds"
+                }
+            }
+        }
+    }
+}

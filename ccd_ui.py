@@ -5,9 +5,12 @@ import sys
 # python -m pip install python3-tk
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 from tkinter import *
 #from tkinter.messagebox import showinfo
 import workspace_settings
+#import hsm_model
+import hierarchical_state_machine
 
 try:
     import hierarchical_state_machine as hsm
@@ -16,6 +19,34 @@ except ImportError:
     print( f"Run:\npython -m pip install hierarchical_state_machine\n    ... then try again." )
     quit()
 
+
+HSM_BLANK_TEMPLATE = """
+{
+  "events": [
+    "timeout_1000ms"
+  ],
+  "states": {
+    "start": {
+      "tran": {
+        "auto": {
+          "dest": "Counting Seconds"
+        }
+      }
+    },
+    "Counting Seconds": {
+      "entry": [
+        "update_display(seconds_counted)"
+      ],
+      "tran": {
+        "timeout_1000ms": {
+          "dest": "Counting Seconds"
+        }
+      }
+    }
+  }
+}
+"""
+HSM_DEFAULT_FILENAME = "hsm_model.json"
 
 APP_TITLE = "Crystal Clear Design - State Machine Editor"
 APP_LOGO    = f"Logo_CCD_32x32.ico"
@@ -63,7 +94,7 @@ this_module = sys.modules[__name__]
 
 # The State Machine Widget
 class sm_widget( tk.Canvas ):
-    def __init__( self, *args, **kwargs ):
+    def __init__( self, model: object, *args, **kwargs ):
         super( sm_widget, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
         self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
@@ -72,6 +103,8 @@ class sm_widget( tk.Canvas ):
         self.most_hgt = -1
         self.prev_wid = -1
         self.prev_hgt = -1
+        self.model = model
+        #self.name = self.model.get_new_state_name()
         
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
@@ -188,6 +221,7 @@ class sm_widget( tk.Canvas ):
 
         self.config( width = temp_wid, height = temp_hgt )
         self.paint()
+        #self.model.set_sm_width(  event.width )
     
     def paint( self ):
         # Blank out the canvas.
@@ -292,11 +326,56 @@ class sm_widget( tk.Canvas ):
         # Finalize
 
 
+#class my_filedialog( filedialog.FileDialog ):
+#    def __init__( self, master, title=None ):
+#        super( filedialog.FileDialog, self ).__init__( self, master, title )
+#
+#    def asksaveasfilename(**options):
+#        "Ask for a filename to save as."
+#
+#        return SaveAs(**options).show()
+#
+#class SaveFileDialog( my_filedialog ):
+#    """File selection dialog which checks that the file may be created."""
+#
+#    title = "Save File Selection Dialog"
+#
+#    def ok_command( self ):
+#        file = self.get_selection()
+#        if os.path.exists(file):
+#            if os.path.isdir(file):
+#                self.master.bell()
+#                return
+#            d = Dialog(self.top,
+#                       title="Overwrite Existing File Question",
+#                       text="Overwrite existing file %r?" % (file,),
+#                       bitmap='questhead',
+#                       default=1,
+#                       strings=("Yes", "Cancel"))
+#            if d.num != 0:
+#                return
+#        else:
+#            head, tail = os.path.split(file)
+#            if not os.path.isdir(head):
+#                self.master.bell()
+#                return
+#        self.quit(file)
+#
+#class SaveAs( filedialog._Dialog ):
+#    "Ask for a filename to save as"
+#
+#    command = "tk_getSaveFile"
+
 class ccd_ui_layout( tk.Tk ):
     def __init__( self, app_args: object, images_folder: str, *args, **kwargs ):
         self.args = app_args
         self.images = images_folder
-        #self.model = model
+        self.has_model_changed = False
+        
+        try:
+            self.model = json.loads( HSM_BLANK_TEMPLATE )
+        except json.JSONDecodeError as e:
+            print( f"ERR: JSONDecodeError, {e.msg}, file=\"{HSM_BLANK_TEMPLATE}\", line = {e.lineno}, col = {e.colno}." )
         
         # Create the app window
         tk.Tk.__init__( self, *args, **kwargs )
@@ -396,9 +475,17 @@ class ccd_ui_layout( tk.Tk ):
         self.tool_button_click( TOOL_NAME_SELECT )
         
         if self.args.have_start_file():
+            # See if a file was specified on the command line.
             self.load_file( self.args.get_start_file() )
-            
+        else:
+            # Otherwise see if a filename is available from the Most Recently Used list.
+            mru_filename = self.wksp_settings.get_latest_used_model()
+            if mru_filename:
+                self.load_file( mru_filename )
+
+        # TODO: For testing only, remove when developed.
         self.test_sm = sm_widget( self.work_frame, width = 100, height = 80, bg = 'white' )
+        self.wksp_settings.are_settings_dirty = True
 
     # Track main app window size & placement.
     def win_resize_cb( self, event ):
@@ -431,9 +518,7 @@ class ccd_ui_layout( tk.Tk ):
         print( f"Exit" )
         self.quit()
 
-    def load_file( self, filename: str ):
-        print( f"Start file = \"{filename}\"." )
-
+    def load_file( self, filename: str = "" ):
         # See if the file exists as listed.
         if not os.path.isfile( filename ):
             # File isn't there, can't load it.
@@ -441,19 +526,53 @@ class ccd_ui_layout( tk.Tk ):
         else:
             # Deserialize the JSON state machine description.
             try:
-                sm_file = open( filename, "r" )
-                if not sm_file:
+                model_file = open( filename, "r" )
+                if not model_file:
                     print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
                 else:
                     try:
-                        self.sm = json.load( sm_file )
+                        self.model = json.load( model_file )
                         self.filename = filename
+                        self.wksp_settings.set_latest_used_model( filename )
+                        print( f"Loaded file = \"{filename}\"." )
                     except json.JSONDecodeError as e:
                         print( f"ERR: JSONDecodeError, {e.msg}, file=\"{filename}\", line = {e.lineno}, col = {e.colno}." )
 
-                    sm_file.close()
+                    model_file.close()
             except OSError:
                 print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
+
+    def save_file( self, filename: str = "" ):
+        if (filename == "" and not self.has_model_changed):
+            # This is a request to save the current model, but there are no changes to save.
+            return
+
+        # If no filename is supplied, assume the request is to save the current file.
+        filename_to_save = filename
+        if (filename_to_save == ""):
+            filename_to_save = self.filename
+        
+        # If no filename was supplied earlier, use a default name and a dialog box.
+        if (filename_to_save == ""):
+            filename_to_save = HSM_DEFAULT_FILENAME
+        
+        # Serialize the JSON state machine description.
+        try:
+            model_filename = filedialog.asksaveasfilename( parent = self,
+              title = "Select Save File Name",
+              initialdir = ".",
+              initialfile = filename_to_save,
+              filetypes = (("JSON files","*.json"),("all files","*.*")),
+              defaultextension = "json",
+              confirmoverwrite = False )
+            model_file = open( model_filename, "w" )
+            self.wksp_settings.set_latest_used_model( model_filename )
+            json.dump( self.model, model_file, ensure_ascii = True, indent = 4 )
+            model_file.close()
+            self.model_has_changed = False
+            # print( f"Saved file = \"{filename_to_save}\"." )
+        except OSError:
+            print( f"WARN: There is something wrong with the file {filename_to_save}, and it can't be opened for writing." )
 
     # Tool Buttons
     def tool_button_create( self, tool_name: str, icon_path: str, callback ):
@@ -479,6 +598,9 @@ class ccd_ui_layout( tk.Tk ):
             tool_idx += 1
 
     def quit( self ):
+        # Save changes to the model.
+        self.save_file()
+        
         # Save changes to the workspace.
         self.wksp_settings.sync_to_disk()
         

@@ -1,8 +1,12 @@
 {
     "app_window": {
-        "left": "369",
-        "top": "25",
-        "width": "1536",
-        "height": "933"
-    }
+        "left": 200,
+        "top": 100,
+        "width": 1152,
+        "height": 648
+    },
+    "mru_models": [
+        "foo_bar.json",
+        "hsm_model.json"
+    ]
 }
