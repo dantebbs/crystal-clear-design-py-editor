@@ -53,6 +53,8 @@ class workspace_settings:
         
         # Deserialize the JSON settings.
         try:
+            print( f"INFO: Loading workspace file \"{self.settings_filename}\"." )
+
             sess_file = open( self.settings_filename, "r" )
             if not sess_file:
                 print( f"WARN: There is something wrong with the file {self.settings_filename}, and it can't be opened." )
@@ -77,7 +79,6 @@ class workspace_settings:
         #print( f'wid = {self.settings[ "app_window" ][ "width"  ]}, hgt = {self.settings[ "app_window" ][ "height"  ]}' )
 
         mru_models = self.get_value( [ "mru_models" ], [] )
-        print( f"mru_models = {mru_models}, type = {type( mru_models )}" )
         self.mru_models = mru.mru( mru_models, DEFAULT_MAX_MRU_MODELS )
 
 
@@ -175,11 +176,10 @@ class workspace_settings:
                 self.are_settings_dirty = True
                 setting_section = setting_section[ key ]
 
-        #print( f"new_value = {new_value}, type = {type( new_value )}" )
         if setting_section[ key_chain[ -1 ] ] != new_value:
             setting_section[ key_chain[ -1 ] ] = new_value
             self.are_settings_dirty = True
-            print( f"Set: keys = {key_chain}, new_val = {new_value}" )
+            #print( f"Set: keys = {key_chain}, new_val = {new_value}, type = {type( new_value )}" )
 
     # Read the application window's width from current settings.
     # If valid, return that. If not:

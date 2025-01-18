@@ -44,16 +44,17 @@ class mru:
     # Note: Index 0 is the least recently used, index -1 is the most recently used.
     # Note: Calling without an index returns
     def get_at_idx( self, idx: int = -1 ):
-        if idx >= 0:
-            if idx < len( self.entries ):
-                return self.entries[ idx ]
-            else:
-                return None
-        else:
-            if abs( idx ) <= len( self.entries ):
-                return self.entries[ idx ]
-            else:
-                return None
+        return self.entries[ idx ]
+        #if idx >= 0:
+        #    if idx < len( self.entries ):
+        #        return self.entries[ idx ]
+        #    else:
+        #        return None
+        #else:
+        #    idx = len( self.entries ) - idx
+        #    if abs( idx ) <= len( self.entries ):
+        #    else:
+        #        return None
 
     # This is an accessor for the purpose of saving the list to disk.
     def get_list( self ) -> list:
