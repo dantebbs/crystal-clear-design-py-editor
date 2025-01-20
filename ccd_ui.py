@@ -184,6 +184,7 @@ class ccd_ui_layout( tk.Tk ):
                 self.load_file( mru_filename )
 
         self.hsm_canvas = ccd_ui_hsm.sm_canvas( self.work_frame, model = self.model )
+        self.hsm_canvas.paint()
 
 
     # Track main app window size & placement.

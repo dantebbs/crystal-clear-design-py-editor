@@ -38,6 +38,11 @@ THK_TITL_SIZE = 20
 MIN_SM_WID = 60
 MIN_SM_HGT = 50
 
+DEF_STATE_LFT = 200
+DEF_STATE_TOP = 100
+DEF_STATE_WID = 120
+DEF_STATE_HGT = 90
+
 # Note: This value must be even and > 0.
 # Lines are routed on multiples of GRID_PIX / 2, and the corners of states are
 # constrained to multiples of GRID_PIX.
@@ -49,8 +54,11 @@ this_module = sys.modules[__name__]
 
 # The State Machine Widget
 class sm_widget( tk.Canvas ):
-    def __init__( self, model: object, *args, **kwargs ):
-        super( sm_widget, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
+    #def __init__( self, *args, model = None, top = 0, left = 0, **kwargs ):
+    def __init__( self, x, y, *args, model = None, **kwargs ):
+        super( sm_widget, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
+        saved_args = {**locals()}  # Updated to make a copy per loco.loop
+        print( f"locals is {saved_args}." )
         self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
         self.drag_start_y = 0
@@ -63,6 +71,7 @@ class sm_widget( tk.Canvas ):
         
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.place( x = x, y = y )
         self.paint()
 
     # Track widget size & placement.
@@ -285,8 +294,34 @@ class sm_canvas( tk.Canvas ):
     def __init__( self, *args, model = None, **kwargs ):
         super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
         self.model = model
-        # TODO: For testing only, remove when developed.
-        self.test_sm = sm_widget( self, width = 100, height = 80, bg = 'white' )
+        self.sm_widgets = []
 
     def paint( self ):
-        pass
+        for state_name in self.model[ "states" ]:
+            state = self.model[ "states" ][ state_name ]
+            lft = DEF_STATE_LFT
+            top = DEF_STATE_TOP
+            wid = DEF_STATE_WID
+            hgt = DEF_STATE_HGT
+            if ( "layout" in state.keys() ):
+                print( f"state = {state}." )
+                layout = state[ "layout" ]
+                if ( "x" in layout.keys() ):
+                    lft = layout[ 'x' ]
+                if ( "y" in layout.keys() ):
+                    top = layout[ 'y' ]
+                if ( "w" in layout.keys() ):
+                    wid = layout[ 'w' ]
+                if ( "h" in layout.keys() ):
+                    hgt = layout[ 'h' ]
+            print( f"{state_name} @ {wid},{hgt}." )
+            
+            #new_widget = sm_widget( self, model = { state_name: state }, left = lft, top = top, width = wid, height = hgt, bg = 'white' )
+            widget_geom_str = f"{wid}x{hgt}+{lft}+{top}"
+
+            new_widget = sm_widget( lft, top, model = { state_name: state }, width = wid, height = hgt, bg = 'white' )
+            #new_widget.place( x = lft, y = top )
+            self.sm_widgets.append( new_widget )
+            
+            #self.test_sm = sm_widget( self, width = wid, height = hgt, bg = 'white' )
+        

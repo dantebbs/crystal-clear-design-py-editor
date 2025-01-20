@@ -18,7 +18,13 @@
                 "timeout_1000ms": {
                     "dest": "Counting Seconds"
                 }
-            }
+            },
+			"layout": {
+				"x": 180,
+				"y": 150,
+				"w": 120,
+				"h": 70
+			}
         }
     }
 }
