@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import *
 #from tkinter.messagebox import showinfo
+from PIL import Image, ImageTk
+
 import workspace_settings
 import hierarchical_state_machine
 
@@ -52,13 +54,13 @@ GRID_PIX = 10
 this_module = sys.modules[__name__]
 
 
-# The State Machine Widget
-class sm_widget( tk.Canvas ):
+# The State Layout Widget
+class sm_state_layout( tk.Canvas ):
     #def __init__( self, *args, model = None, top = 0, left = 0, **kwargs ):
     def __init__( self, x, y, *args, model = None, **kwargs ):
-        super( sm_widget, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
-        saved_args = {**locals()}  # Updated to make a copy per loco.loop
-        print( f"locals is {saved_args}." )
+        super( sm_state_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
+        #my_locals = {**locals()}
+        #print( f"locals is {my_locals}." )
         self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
         self.drag_start_y = 0
@@ -67,11 +69,16 @@ class sm_widget( tk.Canvas ):
         self.prev_wid = -1
         self.prev_hgt = -1
         self.model = model
-        #self.name = self.model.get_new_state_name()
+        self.name = list( model.keys() )[ 0 ]
+        self.x = x
+        self.y = y
+        self.w = kwargs[ 'width' ]
+        self.h = kwargs[ 'height' ]
         
+        self.config( width = self.w, height = self.h )
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
-        self.place( x = x, y = y )
+        self.place( x = self.x, y = self.y )
         self.paint()
 
     # Track widget size & placement.
@@ -97,7 +104,6 @@ class sm_widget( tk.Canvas ):
             self.line_size = THK_LINE_SIZE
             self.crnr_size = THK_CRNR_SIZE
             self.titl_size = THK_TITL_SIZE
-            self.paint()
 
     def drag_start( self, event ):
         self.drag_start_x = event.x
@@ -115,11 +121,13 @@ class sm_widget( tk.Canvas ):
         snap_y = int( snap_y / GRID_PIX )
         snap_y *= GRID_PIX
         
-        self.place( x = snap_x, y = snap_y )
+        self.x = snap_x
+        self.y = snap_y
+        self.place( x = self.x, y = self.y )
     
     def size_start( self, event ):
-        curr_wid = self.winfo_width()
-        curr_hgt = self.winfo_height()
+        curr_wid = self.w
+        curr_hgt = self.h
         self.prev_wid = curr_wid
         self.prev_hgt = curr_hgt
         self.most_wid = curr_wid
@@ -128,7 +136,7 @@ class sm_widget( tk.Canvas ):
         self.offs_hgt = curr_hgt - event.y
 
         self.prev_outline = self.create_rectangle(
-            0, 0, self.winfo_width() - 1, self.winfo_height() - 1,
+            0, 0, self.w - 1, self.h - 1,
             outline = "#888888" )
     
     def size_motion( self, event ):
@@ -183,45 +191,48 @@ class sm_widget( tk.Canvas ):
         snap_y = int( snap_y / GRID_PIX )
         temp_hgt = snap_y * GRID_PIX
 
-        self.config( width = temp_wid, height = temp_hgt )
+        self.w = temp_wid
+        self.h = temp_hgt
+        self.config( width = self.w, height = self.h )
         self.paint()
-        #self.model.set_sm_width(  event.width )
     
     def paint( self ):
         # Blank out the canvas.
         self.delete( "all" )
         
-        # Get the pixel indeces of the bottom-right of the widget.
         self.update_idletasks()
-        rgt = self.winfo_width()
-        btm = self.winfo_height()
 
         # Create a rounded rectangle along the edges of this canvas.
         # Note: For widths greater than 1, x and y coordinates relate
         #       to the center of the line or arc.
-        top_ctr_y = 0   + ( self.line_size / 2 )
-        rgt_ctr_x = rgt - ( self.line_size / 2 )
-        btm_ctr_y = btm - ( self.line_size / 2 )
-        lft_ctr_x = 0   + ( self.line_size / 2 )
+        top_ctr_y = 0      + ( self.line_size / 2 )
+        rgt_ctr_x = self.w - ( self.line_size / 2 )
+        btm_ctr_y = self.h - ( self.line_size / 2 )
+        lft_ctr_x = 0      + ( self.line_size / 2 )
         # Compute Arc Endpoints
         # Note: The x,y coordinates for the arc are to enclose a full ellipse.
-        top_arc_y = 0   + ( self.crnr_size * 2 )
-        rgt_arc_x = rgt - ( self.crnr_size * 2 )
-        btm_arc_y = btm - ( self.crnr_size * 2 )
-        lft_arc_x = 0   + ( self.crnr_size * 2 )
+        top_arc_y = 0      + ( self.crnr_size * 2 )
+        rgt_arc_x = self.w - ( self.crnr_size * 2 )
+        btm_arc_y = self.h - ( self.crnr_size * 2 )
+        lft_arc_x = 0      + ( self.crnr_size * 2 )
 
+        # Set up the state name print area.
+        title_posn_x = lft_arc_x
+        title_posn_y = self.line_size
+        title_size_x = rgt_arc_x - lft_arc_x
+        title_size_y = self.titl_size
+        title_cntr_x = title_posn_x + int( title_size_x / 2 )
+        title_cntr_y = title_posn_y + int( title_size_y / 2 )
+        title_text = self.create_text( title_cntr_x, title_cntr_y, text = self.name,
+            justify = "center", width = 0, activefill = "darkgreen" )
         # Drag the state widget using the title bar.
-        drag_rect = self.create_rectangle(
-            lft_arc_x, self.line_size, rgt_arc_x, self.line_size + self.titl_size,
-            outline = "#FFFFFF", fill = "#FFFFFF",
-            activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
-        self.tag_bind( drag_rect, sequence = "<Button-1>", func = self.drag_start )
-        self.tag_bind( drag_rect, sequence = "<B1-Motion>", func = self.drag_motion )
-        
+        self.tag_bind( title_text, sequence = "<Button-1>", func = self.drag_start )
+        self.tag_bind( title_text, sequence = "<B1-Motion>", func = self.drag_motion )
+
         # Resize the state widget using the bottom right corner.
         size_rect = self.create_rectangle(
             rgt_arc_x, btm_arc_y, rgt_ctr_x, btm_ctr_y,
-            outline = "#FFFFFF", fill = "#FFFFFF",
+            width = 0,
             activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
         self.tag_bind( size_rect, sequence = "<Button-1>", func = self.size_start )
         self.tag_bind( size_rect, sequence = "<B1-Motion>", func = self.size_motion )
@@ -229,8 +240,8 @@ class sm_widget( tk.Canvas ):
         
         # Top Line
         self.create_line(
-            0   + self.crnr_size, top_ctr_y,
-            rgt - self.crnr_size, top_ctr_y,
+            0      + self.crnr_size, top_ctr_y,
+            self.w - self.crnr_size, top_ctr_y,
             width = self.line_size )
             
         # Upper Right Corner
@@ -244,8 +255,8 @@ class sm_widget( tk.Canvas ):
             
         # Right Line
         self.create_line(
-            rgt_ctr_x, 0   + self.crnr_size,
-            rgt_ctr_x, btm - self.crnr_size,
+            rgt_ctr_x, 0      + self.crnr_size,
+            rgt_ctr_x, self.h - self.crnr_size,
             width = self.line_size )
             
         # Bottom Right Corner
@@ -257,8 +268,8 @@ class sm_widget( tk.Canvas ):
             
         # Bottom Line
         self.create_line(
-            rgt - self.crnr_size, btm_ctr_y,
-            0   + self.crnr_size, btm_ctr_y,
+            self.w - self.crnr_size, btm_ctr_y,
+            0      + self.crnr_size, btm_ctr_y,
             width = self.line_size )
             
         # Bottom Left Corner
@@ -270,8 +281,8 @@ class sm_widget( tk.Canvas ):
             
         # Left Line
         self.create_line(
-            lft_ctr_x, btm - self.crnr_size, 
-            lft_ctr_x, 0   + self.crnr_size,
+            lft_ctr_x, self.h - self.crnr_size, 
+            lft_ctr_x, 0      + self.crnr_size,
             width = self.line_size )
             
         # Top Left Corner
@@ -294,7 +305,7 @@ class sm_canvas( tk.Canvas ):
     def __init__( self, *args, model = None, **kwargs ):
         super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
         self.model = model
-        self.sm_widgets = []
+        self.states = []
 
     def paint( self ):
         for state_name in self.model[ "states" ]:
@@ -314,14 +325,9 @@ class sm_canvas( tk.Canvas ):
                     wid = layout[ 'w' ]
                 if ( "h" in layout.keys() ):
                     hgt = layout[ 'h' ]
+            #self.name = self.model.get_new_state_name()
             print( f"{state_name} @ {wid},{hgt}." )
             
-            #new_widget = sm_widget( self, model = { state_name: state }, left = lft, top = top, width = wid, height = hgt, bg = 'white' )
-            widget_geom_str = f"{wid}x{hgt}+{lft}+{top}"
-
-            new_widget = sm_widget( lft, top, model = { state_name: state }, width = wid, height = hgt, bg = 'white' )
-            #new_widget.place( x = lft, y = top )
-            self.sm_widgets.append( new_widget )
-            
-            #self.test_sm = sm_widget( self, width = wid, height = hgt, bg = 'white' )
+            new_widget = sm_state_layout( lft, top, model = { state_name: state }, width = wid, height = hgt, bg = 'white' )
+            self.states.append( new_widget )
         

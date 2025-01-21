@@ -327,15 +327,12 @@ class ccd_ui_layout( tk.Tk ):
 
     def tool_cb_starts( self, event ):
         self.tool_button_click( TOOL_NAME_STARTS )
-        self.test_sm.set_border_thickness( BRD_WEIGHT_THN )
 
     def tool_cb_statem( self, event ):
         self.tool_button_click( TOOL_NAME_STATEM )
-        self.test_sm.set_border_thickness( BRD_WEIGHT_MED )
 
     def tool_cb_transi( self, event ):
         self.tool_button_click( TOOL_NAME_TRANSI )
-        self.test_sm.set_border_thickness( BRD_WEIGHT_THK )
 
     def tool_cb_stopst( self, event ):
         self.tool_button_click( TOOL_NAME_STOPST )
