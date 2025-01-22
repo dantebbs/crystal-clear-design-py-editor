@@ -45,6 +45,11 @@ DEF_STATE_TOP = 100
 DEF_STATE_WID = 120
 DEF_STATE_HGT = 90
 
+# Reserved Words
+HSM_RSVD_START = "start"
+HSM_RSVD_FINAL = "final"
+HSM_RSVD_AUTO  = "auto"
+
 # Note: This value must be even and > 0.
 # Lines are routed on multiples of GRID_PIX / 2, and the corners of states are
 # constrained to multiples of GRID_PIX.
@@ -59,20 +64,108 @@ have_changes = False
 
 
 # The State Layout Widget
+class sm_start_final_state_layout( tk.Canvas ):
+    def __init__( self, state_name, model, x, y, *args, **kwargs ):
+        self.initialized = False
+        assert( state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL )
+        self.name = state_name
+        self.model = model
+        print( f"start/final model={self.model}." )
+        # Set border, which for the start symbol, also sets the width and height.
+        self.set_border_thickness( BRD_WEIGHT_THN )
+        kwargs[ 'width' ]  = self.w
+        kwargs[ 'height' ] = self.h
+
+        super( sm_start_final_state_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
+
+        self.x = x
+        self.y = y
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+
+        self.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.place( x = self.x, y = self.y )
+        #self.place( x = 0, y = 0 )
+        self.initialized = True
+        self.paint()
+
+    def set_border_thickness( self, weight: int ):
+        if ( weight == BRD_WEIGHT_THN ):
+            self.crnr_size = THN_CRNR_SIZE
+        if ( weight == BRD_WEIGHT_MED ):
+            self.crnr_size = MED_CRNR_SIZE
+        if ( weight == BRD_WEIGHT_THK ):
+            self.crnr_size = THK_CRNR_SIZE
+
+        self.w = self.crnr_size * 2
+        self.h = self.crnr_size * 2
+        self.model[ "layout" ][ "w" ] = self.w
+        self.model[ "layout" ][ "h" ] = self.h
+        if self.initialized:
+            self.config( width = self.w, height = self.h )
+
+    def drag_start( self, event ):
+        self.drag_start_x = event.x
+        self.drag_start_y = event.y
+    
+    def drag_motion( self, event ):
+        new_x = self.winfo_x() - self.drag_start_x + event.x
+        # Round it up if closer to next grid point.
+        snap_x = new_x + ( GRID_PIX / 2 )
+        snap_x = int( snap_x / GRID_PIX )
+        snap_x *= GRID_PIX
+        
+        new_y = self.winfo_y() - self.drag_start_y + event.y
+        snap_y = new_y + ( GRID_PIX / 2 )
+        snap_y = int( snap_y / GRID_PIX )
+        snap_y *= GRID_PIX
+        
+        self.x = snap_x
+        self.y = snap_y
+        self.model[ "layout" ][ "x" ] = self.x
+        self.model[ "layout" ][ "y" ] = self.y
+        self.place( x = self.x, y = self.y )
+        global have_changes
+        have_changes = True
+    
+    def paint( self ):
+        # Blank out the canvas.
+        self.delete( "all" )
+        
+        self.update_idletasks()
+
+        # Create a simple filled circle.
+        # Note: The bottom and right sides of the arc outline box
+        #       specify the last position, not last + 1 (as opposed to rectangles).
+        circle = self.create_oval( 0, 0, self.w - 1, self.h - 1,
+            width = 0, fill = "black", activefill = "darkgreen" )
+        # Make it dragable.
+        self.tag_bind( circle, sequence = "<Button-1>", func = self.drag_start )
+        self.tag_bind( circle, sequence = "<B1-Motion>", func = self.drag_motion )
+
+        # Add a white circle in the center if this is a final state.
+        if self.name == HSM_RSVD_FINAL:
+            radius = self.crnr_size / 2
+            inner_circle = self.create_oval( radius, radius, ( radius * 3 ) - 1, ( radius * 3 ) - 1,
+                width = 0, fill = "white", activefill = "lightgreen" )
+            # Make it dragable.
+            self.tag_bind( inner_circle, sequence = "<Button-1>", func = self.drag_start )
+            self.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
+
+
 class sm_state_layout( tk.Canvas ):
     def __init__( self, name, model, x, y, *args, **kwargs ):
+        self.model = model
         super( sm_state_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
         #my_locals = {**locals()}
         #print( f"locals is {my_locals}." )
         self.name = name
-        self.model = model
 
         self.x = x
         self.y = y
         self.w = kwargs[ 'width' ]
         self.h = kwargs[ 'height' ]
         self.config( width = self.w, height = self.h )
-        self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
         self.drag_start_y = 0
         self.most_wid = -1
@@ -85,31 +178,20 @@ class sm_state_layout( tk.Canvas ):
         self.place( x = self.x, y = self.y )
         self.paint()
 
-    # Track widget size & placement.
-    def sm_wid_resize_cb( self, event ):
-        if event.widget == self:
-            self.update_model()
-
-    def update_model( self ):
-        global have_changes
-        have_changes = True
-        return
-        
     def set_border_thickness( self, weight: int ):
         if ( weight == BRD_WEIGHT_THN ):
             self.line_size = THN_LINE_SIZE
             self.crnr_size = THN_CRNR_SIZE
             self.titl_size = THN_TITL_SIZE
-            self.paint()
         if ( weight == BRD_WEIGHT_MED ):
             self.line_size = MED_LINE_SIZE
             self.crnr_size = MED_CRNR_SIZE
             self.titl_size = MED_TITL_SIZE
-            self.paint()
         if ( weight == BRD_WEIGHT_THK ):
             self.line_size = THK_LINE_SIZE
             self.crnr_size = THK_CRNR_SIZE
             self.titl_size = THK_TITL_SIZE
+        self.paint()
 
     def drag_start( self, event ):
         self.drag_start_x = event.x
@@ -205,20 +287,11 @@ class sm_state_layout( tk.Canvas ):
         self.h = temp_hgt
         self.model[ "layout" ][ "w" ] = self.w
         self.model[ "layout" ][ "h" ] = self.h
-        #print( f"state = {self.model}." )
         self.config( width = self.w, height = self.h )
         self.paint()
         global have_changes
         have_changes = True
         
-    def get_layout_model( self ) -> dict:
-        layout_model = { 
-            "x": self.x,
-            "y": self.y,
-            "w": self.w,
-            "h": self.h }
-        return layout_model
-    
     def paint( self ):
         # Blank out the canvas.
         self.delete( "all" )
@@ -320,18 +393,16 @@ class sm_state_layout( tk.Canvas ):
             lft_ctr_x, self.line_size + self.titl_size, 
             rgt_ctr_x, self.line_size + self.titl_size, 
             width = self.line_size )
-            
-        # Finalize
+
 
 # The State Machine Layout Widget
 class sm_canvas( tk.Canvas ):
     def __init__( self, *args, model = None, **kwargs ):
         super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
         self.model = model
-        print( f"model={self.model}." )
-        self.states = []
+        #print( f"model={self.model}." )
 
-    def paint( self ):
+        self.states = []
         for state_name in self.model[ "states" ]:
             state = self.model[ "states" ][ state_name ]
             lft = DEF_STATE_LFT
@@ -356,8 +427,15 @@ class sm_canvas( tk.Canvas ):
                     "h": hgt
                 }
             #self.name = self.model.get_new_state_name()
-            print( f"{state_name} @ {lft},{top}-{wid}x{hgt}." )
+            #print( f"{state_name} @ {lft},{top}-{wid}x{hgt}." )
             
-            new_widget = sm_state_layout( state_name, state, lft, top, width = wid, height = hgt, bg = 'white' )
-            self.states.append( new_widget )
-        
+            if state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL:
+                new_widget = sm_start_final_state_layout( state_name, state, lft, top, bg = 'white' )
+                self.states.append( new_widget )
+            else:
+                new_widget = sm_state_layout( state_name, state, lft, top, width = wid, height = hgt, bg = 'white' )
+                self.states.append( new_widget )
+
+    def paint( self ):
+        for state in self.states:
+            state.paint()

@@ -204,7 +204,7 @@ class ccd_ui_layout( tk.Tk ):
         self.mainloop()
 
     def file_click_cb( self, option_name ):
-        print( f"File -> {option_name}" )
+        #print( f"File -> {option_name}" )
         mru_filename = self.wksp_settings.get_latest_used_model()
         if ( mru_filename ):
             mru_path = os.path.normpath( mru_filename )
@@ -258,13 +258,8 @@ class ccd_ui_layout( tk.Tk ):
             except OSError:
                 print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
 
-    def update_layouts( self, states: dict ) -> None:
-        #for state_name in dict:
-        #    state_model = 
-        pass
-
     def save_file( self, filename: str = "" ):
-        print( f"model={self.model}." )
+        #print( f"model={self.model}." )
         if (filename == "" and not self.has_model_changed and not ccd_ui_hsm.have_changes ):
             # This is a request to save the current model, but there are no changes to save.
             return
