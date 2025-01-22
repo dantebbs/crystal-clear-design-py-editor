@@ -258,8 +258,14 @@ class ccd_ui_layout( tk.Tk ):
             except OSError:
                 print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
 
+    def update_layouts( self, states: dict ) -> None:
+        #for state_name in dict:
+        #    state_model = 
+        pass
+
     def save_file( self, filename: str = "" ):
-        if (filename == "" and not self.has_model_changed):
+        print( f"model={self.model}." )
+        if (filename == "" and not self.has_model_changed and not ccd_ui_hsm.have_changes ):
             # This is a request to save the current model, but there are no changes to save.
             return
 

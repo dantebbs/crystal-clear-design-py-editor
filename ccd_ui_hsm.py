@@ -50,17 +50,28 @@ DEF_STATE_HGT = 90
 # constrained to multiples of GRID_PIX.
 GRID_PIX = 10
 
-
+# Get the name of this particular code module.
 this_module = sys.modules[__name__]
+
+# A flag showing that one or more changes has been made, and the model needs
+# to be saved to file again.
+have_changes = False
 
 
 # The State Layout Widget
 class sm_state_layout( tk.Canvas ):
-    #def __init__( self, *args, model = None, top = 0, left = 0, **kwargs ):
-    def __init__( self, x, y, *args, model = None, **kwargs ):
+    def __init__( self, name, model, x, y, *args, **kwargs ):
         super( sm_state_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
         #my_locals = {**locals()}
         #print( f"locals is {my_locals}." )
+        self.name = name
+        self.model = model
+
+        self.x = x
+        self.y = y
+        self.w = kwargs[ 'width' ]
+        self.h = kwargs[ 'height' ]
+        self.config( width = self.w, height = self.h )
         self.bind( "<Configure>", self.sm_wid_resize_cb )
         self.drag_start_x = 0
         self.drag_start_y = 0
@@ -68,14 +79,7 @@ class sm_state_layout( tk.Canvas ):
         self.most_hgt = -1
         self.prev_wid = -1
         self.prev_hgt = -1
-        self.model = model
-        self.name = list( model.keys() )[ 0 ]
-        self.x = x
-        self.y = y
-        self.w = kwargs[ 'width' ]
-        self.h = kwargs[ 'height' ]
-        
-        self.config( width = self.w, height = self.h )
+
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.place( x = self.x, y = self.y )
@@ -87,6 +91,8 @@ class sm_state_layout( tk.Canvas ):
             self.update_model()
 
     def update_model( self ):
+        global have_changes
+        have_changes = True
         return
         
     def set_border_thickness( self, weight: int ):
@@ -123,7 +129,11 @@ class sm_state_layout( tk.Canvas ):
         
         self.x = snap_x
         self.y = snap_y
+        self.model[ "layout" ][ "x" ] = self.x
+        self.model[ "layout" ][ "y" ] = self.y
         self.place( x = self.x, y = self.y )
+        global have_changes
+        have_changes = True
     
     def size_start( self, event ):
         curr_wid = self.w
@@ -193,8 +203,21 @@ class sm_state_layout( tk.Canvas ):
 
         self.w = temp_wid
         self.h = temp_hgt
+        self.model[ "layout" ][ "w" ] = self.w
+        self.model[ "layout" ][ "h" ] = self.h
+        #print( f"state = {self.model}." )
         self.config( width = self.w, height = self.h )
         self.paint()
+        global have_changes
+        have_changes = True
+        
+    def get_layout_model( self ) -> dict:
+        layout_model = { 
+            "x": self.x,
+            "y": self.y,
+            "w": self.w,
+            "h": self.h }
+        return layout_model
     
     def paint( self ):
         # Blank out the canvas.
@@ -305,6 +328,7 @@ class sm_canvas( tk.Canvas ):
     def __init__( self, *args, model = None, **kwargs ):
         super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
         self.model = model
+        print( f"model={self.model}." )
         self.states = []
 
     def paint( self ):
@@ -315,7 +339,6 @@ class sm_canvas( tk.Canvas ):
             wid = DEF_STATE_WID
             hgt = DEF_STATE_HGT
             if ( "layout" in state.keys() ):
-                print( f"state = {state}." )
                 layout = state[ "layout" ]
                 if ( "x" in layout.keys() ):
                     lft = layout[ 'x' ]
@@ -325,9 +348,16 @@ class sm_canvas( tk.Canvas ):
                     wid = layout[ 'w' ]
                 if ( "h" in layout.keys() ):
                     hgt = layout[ 'h' ]
+            else:
+                state[ "layout" ] = {
+                    "x": lft,
+                    "y": top,
+                    "w": wid,
+                    "h": hgt
+                }
             #self.name = self.model.get_new_state_name()
-            print( f"{state_name} @ {wid},{hgt}." )
+            print( f"{state_name} @ {lft},{top}-{wid}x{hgt}." )
             
-            new_widget = sm_state_layout( lft, top, model = { state_name: state }, width = wid, height = hgt, bg = 'white' )
+            new_widget = sm_state_layout( state_name, state, lft, top, width = wid, height = hgt, bg = 'white' )
             self.states.append( new_widget )
         
