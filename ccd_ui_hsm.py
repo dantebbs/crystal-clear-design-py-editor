@@ -7,6 +7,7 @@ from tkinter import ttk
 from tkinter import *
 #from tkinter.messagebox import showinfo
 from PIL import Image, ImageTk
+import util
 
 import workspace_settings
 import hierarchical_state_machine
@@ -46,9 +47,12 @@ DEF_STATE_WID = 120
 DEF_STATE_HGT = 90
 
 # Reserved Words
+HSM_RSVD_LYOUT = "layout"
 HSM_RSVD_START = "start"
 HSM_RSVD_FINAL = "final"
 HSM_RSVD_AUTO  = "auto"
+HSM_RSVD_TRAN  = "tran"
+HSM_RSVD_PATH  = "path"
 
 # Note: This value must be even and > 0.
 # Lines are routed on multiples of GRID_PIX / 2, and the corners of states are
@@ -70,7 +74,7 @@ class sm_start_final_state_layout( tk.Canvas ):
         assert( state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL )
         self.name = state_name
         self.model = model
-        print( f"start/final model={self.model}." )
+        #print( f"start/final model={self.model}." )
         # Set border, which for the start symbol, also sets the width and height.
         self.set_border_thickness( BRD_WEIGHT_THN )
         kwargs[ 'width' ]  = self.w
@@ -87,7 +91,7 @@ class sm_start_final_state_layout( tk.Canvas ):
         self.place( x = self.x, y = self.y )
         #self.place( x = 0, y = 0 )
         self.initialized = True
-        self.paint()
+        #self.paint()
 
     def set_border_thickness( self, weight: int ):
         if ( weight == BRD_WEIGHT_THN ):
@@ -176,7 +180,7 @@ class sm_state_layout( tk.Canvas ):
         self.set_border_thickness( BRD_WEIGHT_THN )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.place( x = self.x, y = self.y )
-        self.paint()
+        #self.paint()
 
     def set_border_thickness( self, weight: int ):
         if ( weight == BRD_WEIGHT_THN ):
@@ -439,3 +443,28 @@ class sm_canvas( tk.Canvas ):
     def paint( self ):
         for state in self.states:
             state.paint()
+        
+            # Then add the transitions.
+            #print( f"state.model={state.model}" )
+            if state.name == HSM_RSVD_START:
+                # Get the transition info.
+                assert( HSM_RSVD_TRAN in state.model )
+                tran = state.model[ HSM_RSVD_TRAN ]
+                assert( len( tran ) == 1 )
+                assert( HSM_RSVD_AUTO in tran )
+                tran_data = tran[ HSM_RSVD_AUTO ]
+                print( f"tran_data={tran_data}" )
+                # See if a path is provided.
+                path = []
+                if HSM_RSVD_PATH in tran_data:
+                    for point in tran_data[ HSM_RSVD_PATH ]:
+                        path.append( point )
+                else:
+                    # Path not yet specified. Create a default.
+                    pass
+            elif state.name == HSM_RSVD_FINAL:
+                # The final state can have no transitions out of it.
+                assert( HSM_RSVD_TRAN not in state.model )
+            else:
+                # General case.
+                pass

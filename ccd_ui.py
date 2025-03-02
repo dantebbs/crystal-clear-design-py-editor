@@ -174,6 +174,7 @@ class ccd_ui_layout( tk.Tk ):
         self.selected_tool_idx = -1
         self.tool_button_click( TOOL_NAME_SELECT )
         
+        self.curr_model_filename = ""
         if self.args.have_start_file():
             # See if a file was specified on the command line.
             self.load_file( self.args.get_start_file() )
@@ -251,6 +252,7 @@ class ccd_ui_layout( tk.Tk ):
                         self.model = json.load( model_file )
                         self.filename = filename
                         self.wksp_settings.set_latest_used_model( filename )
+                        self.curr_model_filename = filename
                     except json.JSONDecodeError as e:
                         print( f"ERR: JSONDecodeError, {e.msg}, file=\"{filename}\", line = {e.lineno}, col = {e.colno}." )
 
@@ -258,32 +260,45 @@ class ccd_ui_layout( tk.Tk ):
             except OSError:
                 print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
 
-    def save_file( self, filename: str = "" ):
+    def save_file( self, new_filename: str = "" ):
         #print( f"model={self.model}." )
-        if (filename == "" and not self.has_model_changed and not ccd_ui_hsm.have_changes ):
+        if (new_filename == "" and not self.has_model_changed and not ccd_ui_hsm.have_changes ):
             # This is a request to save the current model, but there are no changes to save.
             return
 
+        use_dialog = True
+        # When the autosave setting is selected, in some cases we can skip the dialog.
+        should_auto_save = self.wksp_settings.get_value( [ "settings", "autosave" ], False )
+
+        print( f"1. new_filename=""{new_filename}""." )
         # If no filename is supplied, assume the request is to save the current file.
-        filename_to_save = filename
+        filename_to_save = new_filename
         if (filename_to_save == ""):
             filename_to_save = self.filename
+            print( f"2. filename_to_save={filename_to_save}." )
+            if ( should_auto_save ):
+                use_dialog = False
+        print( f"3. filename_to_save=""{filename_to_save}""." )
+        print( f"4. autosave={should_auto_save}." )
         
-        # If no filename was supplied earlier, use a default name and a dialog box.
+        # If no filename was supplied earlier, supply a default name and a dialog box.
         if (filename_to_save == ""):
             filename_to_save = HSM_DEFAULT_FILENAME
-        
+            print( f"5. filename_to_save=""{filename_to_save}""." )
+
         # Serialize the JSON state machine description.
         try:
-            model_filename = filedialog.asksaveasfilename( parent = self,
-              title = "Select Save File Name",
-              initialdir = ".",
-              initialfile = filename_to_save,
-              filetypes = (("JSON files","*.json"),("all files","*.*")),
-              defaultextension = "json",
-              confirmoverwrite = False )
-            model_file = open( model_filename, "w" )
-            self.wksp_settings.set_latest_used_model( model_filename )
+            print( f"6. filename_to_save={filename_to_save}." )
+            if ( use_dialog ):
+                filename_to_save = filedialog.asksaveasfilename( parent = self,
+                  title = "Select Save File Name",
+                  initialdir = ".",
+                  initialfile = filename_to_save,
+                  filetypes = (("JSON files","*.json"),("all files","*.*")),
+                  defaultextension = "json",
+                  confirmoverwrite = False )
+            model_file = open( filename_to_save, "w" )
+            self.wksp_settings.set_latest_used_model( filename_to_save )
             json.dump( self.model, model_file, ensure_ascii = True, indent = 4 )
             model_file.close()
             self.model_has_changed = False

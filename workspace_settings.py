@@ -15,7 +15,8 @@ DEFAULT_APP_WIN = f"""{{
   }}"""
 DEFAULT_JSON = f"""{{
   "app_window": {DEFAULT_APP_WIN},
-  "mru_models": [ "hsm_model.json" ]
+  "mru_models": [ "hsm_model.json" ],
+  "settings": {{"autosave": 1}}
 }}
 """
 # Default to an arbitrary fraction of width and height of the current monitor if invalid.

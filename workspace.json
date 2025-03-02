@@ -6,6 +6,10 @@
         "height": 806
     },
     "mru_models": [
-        "C:/dev/crystal-clear-design-py-editor/hsm_model.json"
-    ]
+        "C:/dev/crystal-clear-design-py-editor/hsm_model.json",
+        "hsm_model.json"
+    ],
+    "settings": {
+        "autosave": 1
+    }
 }
