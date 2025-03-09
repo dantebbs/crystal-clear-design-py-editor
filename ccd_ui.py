@@ -64,6 +64,7 @@ TOOL_NAME_STOPST = f"StopState"
 
 
 this_module = sys.modules[__name__]
+ui = None
 
 
 class ccd_ui_layout( tk.Tk ):
@@ -104,11 +105,11 @@ class ccd_ui_layout( tk.Tk ):
         self.geometry( app_geom_str )
         self.resizable( True, True )
         self.iconbitmap( images_folder + APP_LOGO )
-        self.minsize( 100, 100 )
+        self.minsize( 200, 200 )
         self.bind( "<Configure>", self.win_resize_cb )
 
         # Menu Buttons
-        menu_height = 35
+        menu_height = 25
         self.paned_win = tk.PanedWindow( self, width = self.winfo_width(), height = self.winfo_height(), orient = 'vertical', sashwidth = 0 )
         self.paned_win.grid()
         menu_frame = tk.Frame( self.paned_win, width = app_wid, height = menu_height )
@@ -151,10 +152,12 @@ class ccd_ui_layout( tk.Tk ):
         self.tool_names = []
         self.tool_icons = []
         self.tool_buttons = []
-        tool_width = 64
-        paned_sub_win = tk.PanedWindow( self, width = tool_width, height = self.winfo_height() - menu_height, orient = 'horizontal', sashwidth = 0 )
-        paned_sub_win.grid()    
-        self.tool_frame = tk.Frame( self, width = tool_width, height = app_hgt - menu_height )
+        #tool_width = 64
+        #paned_sub_win = tk.PanedWindow( self, width = tool_width, height = self.winfo_height() - menu_height, orient = 'horizontal', sashwidth = 0 )
+        paned_sub_win = tk.PanedWindow( self, orient = 'horizontal', sashwidth = 0 )
+        paned_sub_win.grid()
+        #self.tool_frame = tk.Frame( self, width = tool_width, height = app_hgt - menu_height )
+        self.tool_frame = tk.Frame( paned_sub_win )
         self.tool_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
         
         self.tool_button_create( TOOL_NAME_SELECT, self.images + TOOL_ICON_SELECT, self.tool_cb_select )
@@ -162,8 +165,18 @@ class ccd_ui_layout( tk.Tk ):
         self.tool_button_create( TOOL_NAME_STATEM, self.images + TOOL_ICON_STATEM, self.tool_cb_statem )
         self.tool_button_create( TOOL_NAME_TRANSI, self.images + TOOL_ICON_TRANSI, self.tool_cb_transi )
         self.tool_button_create( TOOL_NAME_STOPST, self.images + TOOL_ICON_STOPST, self.tool_cb_stopst )
+        
+        self.tool_frame.update()
+        tool_width = self.tool_frame.winfo_width()
 
-        self.work_frame = tk.Frame( paned_sub_win, width = app_wid - tool_width, background = 'white' )
+        # Working Canvas
+        work_frame_wid = app_wid - tool_width
+        work_frame_hgt = app_hgt - menu_height
+        self.work_frame = tk.Frame( paned_sub_win, width = work_frame_wid, height = work_frame_hgt, background = 'white' )
+        self.work_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.work_frame.grid_propagate( False )
+        self.work_frame.update()
+
         paned_sub_win.add( self.tool_frame )
         paned_sub_win.add( self.work_frame )
         self.paned_win.add( paned_sub_win )
@@ -184,7 +197,7 @@ class ccd_ui_layout( tk.Tk ):
             if mru_filename:
                 self.load_file( mru_filename )
 
-        self.hsm_canvas = ccd_ui_hsm.sm_canvas( self.work_frame, model = self.model )
+        self.hsm_canvas = ccd_ui_hsm.sm_canvas( self.work_frame, model = self.model, width = work_frame_wid, height = work_frame_hgt )
         self.hsm_canvas.paint()
 
 
@@ -232,7 +245,6 @@ class ccd_ui_layout( tk.Tk ):
         print( f"View -> {option_name}" )
 
     def exit_click_cb( self, event ):
-        print( f"Exit" )
         self.quit()
 
     def load_file( self, filename: str = "" ):
@@ -270,25 +282,19 @@ class ccd_ui_layout( tk.Tk ):
         # When the autosave setting is selected, in some cases we can skip the dialog.
         should_auto_save = self.wksp_settings.get_value( [ "settings", "autosave" ], False )
 
-        print( f"1. new_filename=""{new_filename}""." )
         # If no filename is supplied, assume the request is to save the current file.
         filename_to_save = new_filename
         if (filename_to_save == ""):
             filename_to_save = self.filename
-            print( f"2. filename_to_save={filename_to_save}." )
             if ( should_auto_save ):
                 use_dialog = False
-        print( f"3. filename_to_save=""{filename_to_save}""." )
-        print( f"4. autosave={should_auto_save}." )
         
         # If no filename was supplied earlier, supply a default name and a dialog box.
         if (filename_to_save == ""):
             filename_to_save = HSM_DEFAULT_FILENAME
-            print( f"5. filename_to_save=""{filename_to_save}""." )
 
         # Serialize the JSON state machine description.
         try:
-            print( f"6. filename_to_save={filename_to_save}." )
             if ( use_dialog ):
                 filename_to_save = filedialog.asksaveasfilename( parent = self,
                   title = "Select Save File Name",
@@ -302,7 +308,7 @@ class ccd_ui_layout( tk.Tk ):
             json.dump( self.model, model_file, ensure_ascii = True, indent = 4 )
             model_file.close()
             self.model_has_changed = False
-            # print( f"Saved file = \"{filename_to_save}\"." )
+            print( f"Saved file = \"{filename_to_save}\"." )
         except OSError:
             print( f"WARN: There is something wrong with the file {filename_to_save}, and it can't be opened for writing." )
 
@@ -346,6 +352,7 @@ class ccd_ui_layout( tk.Tk ):
 
     def tool_cb_statem( self, event ):
         self.tool_button_click( TOOL_NAME_STATEM )
+        #name = self.model.get_new_state_name()
 
     def tool_cb_transi( self, event ):
         self.tool_button_click( TOOL_NAME_TRANSI )

@@ -8,6 +8,8 @@ from tkinter import *
 #from tkinter.messagebox import showinfo
 from PIL import Image, ImageTk
 import util
+# python -m pip install PyYAML
+#import yaml
 
 import workspace_settings
 import hierarchical_state_machine
@@ -52,6 +54,7 @@ HSM_RSVD_START = "start"
 HSM_RSVD_FINAL = "final"
 HSM_RSVD_AUTO  = "auto"
 HSM_RSVD_TRAN  = "tran"
+HSM_RSVD_DEST  = "dest"
 HSM_RSVD_PATH  = "path"
 
 # Note: This value must be even and > 0.
@@ -67,7 +70,37 @@ this_module = sys.modules[__name__]
 have_changes = False
 
 
-# The State Layout Widget
+class sm_state_outline():
+    def __init__( self, state: dict ):
+        self.lft = DEF_STATE_LFT
+        self.top = DEF_STATE_TOP
+        self.wid = DEF_STATE_WID
+        self.hgt = DEF_STATE_HGT
+
+        if ( HSM_RSVD_LYOUT in state.keys() ):
+            layout = state[ HSM_RSVD_LYOUT ]
+            if ( "x" in layout.keys() ):
+                self.lft = layout[ 'x' ]
+            if ( "y" in layout.keys() ):
+                self.top = layout[ 'y' ]
+            if ( "w" in layout.keys() ):
+                self.wid = layout[ 'w' ]
+            if ( "h" in layout.keys() ):
+                self.hgt = layout[ 'h' ]
+
+        #print( f"{self.lft},{self.top}-{self.wid}x{self.hgt}." )
+
+    def get_path( self ) -> list:
+        # Upper Left Corner
+        x1 = self.lft
+        y1 = self.top
+        # Lower Right Corner
+        x2 = self.lft + self.wid
+        y2 = self.top + self.hgt
+        path = [ ( x1, y1 ), ( x2, y1 ), ( x2, y2 ), ( x1, y2 ) ]
+        return path
+
+# The Layout Widget for Start and Final States
 class sm_start_final_state_layout( tk.Canvas ):
     def __init__( self, state_name, model, x, y, *args, **kwargs ):
         self.initialized = False
@@ -157,6 +190,7 @@ class sm_start_final_state_layout( tk.Canvas ):
             self.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
 
 
+# The State Layout Widget
 class sm_state_layout( tk.Canvas ):
     def __init__( self, name, model, x, y, *args, **kwargs ):
         self.model = model
@@ -195,7 +229,6 @@ class sm_state_layout( tk.Canvas ):
             self.line_size = THK_LINE_SIZE
             self.crnr_size = THK_CRNR_SIZE
             self.titl_size = THK_TITL_SIZE
-        self.paint()
 
     def drag_start( self, event ):
         self.drag_start_x = event.x
@@ -297,11 +330,6 @@ class sm_state_layout( tk.Canvas ):
         have_changes = True
         
     def paint( self ):
-        # Blank out the canvas.
-        self.delete( "all" )
-        
-        self.update_idletasks()
-
         # Create a rounded rectangle along the edges of this canvas.
         # Note: For widths greater than 1, x and y coordinates relate
         #       to the center of the line or arc.
@@ -398,50 +426,139 @@ class sm_state_layout( tk.Canvas ):
             rgt_ctr_x, self.line_size + self.titl_size, 
             width = self.line_size )
 
-
 # The State Machine Layout Widget
 class sm_canvas( tk.Canvas ):
     def __init__( self, *args, model = None, **kwargs ):
         super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
-        self.model = model
-        #print( f"model={self.model}." )
+        self.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.grid_propagate( False )
+        self.update()
+        print( f"Wrk Frame w, h = {self.winfo_width()}, {self.winfo_height()}" )
+        #print( f"Inp model:" )
+        #print( json.dumps( model, indent = 2 ) )
+        # Since we can't alter a dictionary during iteration, we create a new copy, and use that subsequently.
+        self.model = dict( model )
 
-        self.states = []
-        for state_name in self.model[ "states" ]:
-            state = self.model[ "states" ][ state_name ]
-            lft = DEF_STATE_LFT
-            top = DEF_STATE_TOP
-            wid = DEF_STATE_WID
-            hgt = DEF_STATE_HGT
-            if ( "layout" in state.keys() ):
-                layout = state[ "layout" ]
-                if ( "x" in layout.keys() ):
-                    lft = layout[ 'x' ]
-                if ( "y" in layout.keys() ):
-                    top = layout[ 'y' ]
-                if ( "w" in layout.keys() ):
-                    wid = layout[ 'w' ]
-                if ( "h" in layout.keys() ):
-                    hgt = layout[ 'h' ]
-            else:
-                state[ "layout" ] = {
-                    "x": lft,
-                    "y": top,
-                    "w": wid,
-                    "h": hgt
-                }
-            #self.name = self.model.get_new_state_name()
-            #print( f"{state_name} @ {lft},{top}-{wid}x{hgt}." )
-            
+        # Resolve any layout issues for each state.
+        self.state_widgets = []
+        for state_name, state in model[ "states" ].items():
+            self.model[ "states" ][ state_name ] = state
+            state_outline = sm_state_outline( state )
+            #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
+
             if state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL:
-                new_widget = sm_start_final_state_layout( state_name, state, lft, top, bg = 'white' )
-                self.states.append( new_widget )
+                new_widget = sm_start_final_state_layout( state_name, state,
+                  state_outline.lft, state_outline.top, bg = 'white' )
+                self.state_widgets.append( new_widget )
             else:
-                new_widget = sm_state_layout( state_name, state, lft, top, width = wid, height = hgt, bg = 'white' )
-                self.states.append( new_widget )
+                new_widget = sm_state_layout( state_name, state,
+                  state_outline.lft, state_outline.top, width = state_outline.wid, height = state_outline.hgt,
+                  bg = 'white' )
+                self.state_widgets.append( new_widget )
+
+            # Ensure we have at least a default layout for each transition.
+            #print( f"1. {state_name} - {state}" )
+            print( f"{state_name}" )
+            transitions = dict( state.get( HSM_RSVD_TRAN ) )
+            print( f"  tr = { transitions }" )
+            for transition_name, transition in transitions.items():
+                path = transition.get( HSM_RSVD_LYOUT )
+                if path is None:
+                    #print( f"1. {state_name} - {state}" )
+                    dst_state_name = transition.get( HSM_RSVD_DEST )
+                    if dst_state_name:
+                        dst_state = model[ "states" ][ dst_state_name ]
+                        path = self.find_default_path( state, transition, dst_state )
+                        self.model[ "states" ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
+                        global have_changes
+                        have_changes = True
+                        print( f"  path = {path}" )
+                    else:
+                        print( f"Transition missing destination { transition_name }: { transition }" )
+                        assert( False )
+        #print( f"Out model:" )
+        #print( json.dumps( self.model, indent = 2 ) )
+        self.set_border_thickness( BRD_WEIGHT_THN )
+
+    def set_border_thickness( self, weight: int ):
+        # Update each of the state widgets.
+        for widget in self.state_widgets:
+            widget.set_border_thickness( weight )
+
+        # Update the transation lines.
+        if ( weight == BRD_WEIGHT_THN ):
+            self.line_size = THN_LINE_SIZE
+            self.crnr_size = THN_CRNR_SIZE
+        if ( weight == BRD_WEIGHT_MED ):
+            self.line_size = MED_LINE_SIZE
+            self.crnr_size = MED_CRNR_SIZE
+        if ( weight == BRD_WEIGHT_THK ):
+            self.line_size = THK_LINE_SIZE
+            self.crnr_size = THK_CRNR_SIZE
+
+        self.paint()
+
+    # This just gives the simplest default path.
+    #   Find x and y mid-points on each state.
+    #   Pick the shortest pair of midpoints for the first and last points in the path.
+    def find_default_path( self, src_state: dict, transition: dict, dst_state: dict ) -> list:
+        path = []
+        
+        # Get the outlines of the states.
+        from_outline = sm_state_outline( src_state ).get_path()
+        to_outline = sm_state_outline( dst_state ).get_path()
+        
+        # Duplicate the first point on the end for compute convenience.
+        from_outline.append( from_outline[ 0 ] )
+        to_outline.append( to_outline[ 0 ] )
+        from_midpoints = []
+        to_midpoints = []
+        for corner_idx in range( len( from_outline ) - 1 ):
+            x = int( ( from_outline[ corner_idx ][0] + from_outline[ corner_idx + 1 ][0] ) / 2 )
+            y = int( ( from_outline[ corner_idx ][1] + from_outline[ corner_idx + 1 ][1] ) / 2 )
+            from_midpoints.append( { "x": x, "y": y } )
+            
+            x = int( ( to_outline[ corner_idx ][0] + to_outline[ corner_idx + 1 ][0] ) / 2 )
+            y = int( ( to_outline[ corner_idx ][1] + to_outline[ corner_idx + 1 ][1] ) / 2 )
+            to_midpoints.append( { "x": x, "y": y } )
+
+        if src_state != dst_state:
+            # Compute distance between each from_midpoint and each to_midpoint, and find the min.
+            from_idx = 0
+            min_found = float( 'inf' )
+            for from_midpoint in from_midpoints:
+                for to_midpoint in to_midpoints:
+                    x_delt = to_midpoint[ "x" ] - from_midpoint[ "x" ]
+                    y_delt = to_midpoint[ "y" ] - from_midpoint[ "y" ]
+                    dist = ( x_delt * x_delt + y_delt * y_delt )
+                    if dist < min_found:
+                        min_found = dist
+                        path = [ from_midpoint, to_midpoint ]
+                    from_idx += 1
+        else:
+            # Special case, a transition to self.
+            # Construct a loop on the right side.
+            path = [ from_midpoints[ 2 ],
+              { "x": from_midpoints[ 2 ][ "x" ] + 10, "y": from_midpoints[ 2 ][ "y" ] },
+              { "x": from_midpoints[ 2 ][ "x" ] + 10, "y": from_midpoints[ 2 ][ "y" ] + 10 },
+              { "x": from_midpoints[ 2 ][ "x" ],      "y": from_midpoints[ 2 ][ "y" ] + 10 } ]
+
+        return path
 
     def paint( self ):
-        for state in self.states:
+        # Blank out the canvas.
+        self.delete( "all" )
+        
+        self.update_idletasks()
+
+        # Size paint area to the current app window size.
+        print( f"w, h = {self.winfo_width()}, {self.winfo_height()}" )
+        size_rect = self.create_rectangle(
+            0, 0, self.winfo_width(), self.winfo_height(), width = 0, fill = "white" )
+            #, activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
+
+        for state in self.state_widgets:
+            # Paint each state.
             state.paint()
         
             # Then add the transitions.
@@ -453,15 +570,18 @@ class sm_canvas( tk.Canvas ):
                 assert( len( tran ) == 1 )
                 assert( HSM_RSVD_AUTO in tran )
                 tran_data = tran[ HSM_RSVD_AUTO ]
-                print( f"tran_data={tran_data}" )
+                print( f"paint tr = {tran_data}" )
                 # See if a path is provided.
-                path = []
-                if HSM_RSVD_PATH in tran_data:
-                    for point in tran_data[ HSM_RSVD_PATH ]:
-                        path.append( point )
-                else:
-                    # Path not yet specified. Create a default.
-                    pass
+                path = tran_data.get( HSM_RSVD_PATH )
+                print( f"paint pa = {path}" )
+                for point_idx in range( len( path ) - 1 ):
+                    src_pt = path[ point_idx + 0 ]
+                    dst_pt = path[ point_idx + 1 ]
+                    print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}' )
+                    self.create_line(
+                        src_pt[ "x" ], src_pt[ "y" ], 
+                        dst_pt[ "x" ], dst_pt[ "y" ], 
+                        width = self.line_size )
             elif state.name == HSM_RSVD_FINAL:
                 # The final state can have no transitions out of it.
                 assert( HSM_RSVD_TRAN not in state.model )

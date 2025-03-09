@@ -1,17 +1,24 @@
 {
-    "events": [
-        "timeout_1000ms"
-    ],
     "states": {
         "start": {
             "tran": {
                 "auto": {
-                    "dest": "Counting Seconds"
+                    "dest": "Counting Seconds",
+                    "path": [
+                        {
+                            "x": 10,
+                            "y": 20
+                        },
+                        {
+                            "x": 250,
+                            "y": 610
+                        }
+                    ]
                 }
             },
             "layout": {
-                "x": 1230,
-                "y": 70,
+                "x": 0,
+                "y": 0,
                 "w": 20,
                 "h": 20
             }
@@ -22,12 +29,30 @@
             ],
             "tran": {
                 "timeout_1000ms": {
-                    "dest": "Counting Seconds"
+                    "dest": "Counting Seconds",
+                    "path": [
+                        {
+                            "x": 250,
+                            "y": 700
+                        },
+                        {
+                            "x": 260,
+                            "y": 700
+                        },
+                        {
+                            "x": 260,
+                            "y": 710
+                        },
+                        {
+                            "x": 250,
+                            "y": 710
+                        }
+                    ]
                 }
             },
             "layout": {
-                "x": 910,
-                "y": 120,
+                "x": 80,
+                "y": 610,
                 "w": 340,
                 "h": 90
             }
