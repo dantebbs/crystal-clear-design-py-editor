@@ -152,11 +152,8 @@ class ccd_ui_layout( tk.Tk ):
         self.tool_names = []
         self.tool_icons = []
         self.tool_buttons = []
-        #tool_width = 64
-        #paned_sub_win = tk.PanedWindow( self, width = tool_width, height = self.winfo_height() - menu_height, orient = 'horizontal', sashwidth = 0 )
         paned_sub_win = tk.PanedWindow( self, orient = 'horizontal', sashwidth = 0 )
         paned_sub_win.grid()
-        #self.tool_frame = tk.Frame( self, width = tool_width, height = app_hgt - menu_height )
         self.tool_frame = tk.Frame( paned_sub_win )
         self.tool_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
         
@@ -170,8 +167,10 @@ class ccd_ui_layout( tk.Tk ):
         tool_width = self.tool_frame.winfo_width()
 
         # Working Canvas
-        work_frame_wid = app_wid - tool_width
-        work_frame_hgt = app_hgt - menu_height
+        work_frame_wid = app_wid - tool_width - 1
+        # Not sure why, but this extra -2 tweak is currently needed to fit the work area corners.
+        work_frame_hgt = app_hgt - menu_height - 1 - 2
+        print( f"work frame {work_frame_wid},{work_frame_hgt}" )
         self.work_frame = tk.Frame( paned_sub_win, width = work_frame_wid, height = work_frame_hgt, background = 'white' )
         self.work_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.work_frame.grid_propagate( False )
