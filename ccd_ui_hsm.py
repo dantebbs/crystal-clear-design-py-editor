@@ -71,6 +71,34 @@ this_module = sys.modules[__name__]
 have_changes = False
 
 
+def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
+    if model:
+        # Push extents out as needed.
+        ( min_x, min_y ) = ( 0, 0 )
+        ( max_x, max_y ) = ( min_w, min_h )
+        states = model.get( HSM_RSVD_STATES )
+        for state_name, state in states.items():
+            layout = state.get( HSM_RSVD_LYOUT )
+            if layout:
+                state_x = layout.get( "x", DEF_STATE_LFT )
+                if ( min_x > state_x ):
+                    min_x = state_x
+                state_y = layout.get( "y", DEF_STATE_TOP )
+                if ( min_y > state_y ):
+                    min_y = state_y
+                state_w = layout.get( "w", DEF_STATE_WID )
+                if ( max_x < state_x + state_w ):
+                    max_x = state_x + state_w
+                state_h = layout.get( "h", DEF_STATE_HGT )
+                if ( max_y < state_y + state_h ):
+                    max_y = state_y + state_h
+
+            # TODO: Add recursion to account for sub-states.
+            
+            # TODO: Add transition paths extent expansion as well.
+        
+    return { "x": min_x, "y": min_y, "w": max_x - min_x, "h": max_y - min_y }
+
 class sm_state_outline():
     def __init__( self, state: dict ):
         self.lft = DEF_STATE_LFT
@@ -78,8 +106,8 @@ class sm_state_outline():
         self.wid = DEF_STATE_WID
         self.hgt = DEF_STATE_HGT
 
-        if ( HSM_RSVD_LYOUT in state.keys() ):
-            layout = state[ HSM_RSVD_LYOUT ]
+        layout = state.get( HSM_RSVD_LYOUT )
+        if layout:
             if ( "x" in layout.keys() ):
                 self.lft = layout[ 'x' ]
             if ( "y" in layout.keys() ):
@@ -103,16 +131,16 @@ class sm_state_outline():
 
 # The Layout Widget for Start and Final States
 class sm_start_final_state_layout():
-    def __init__( self, state_name: str, model: dict, canvas: object ):
+    def __init__( self, parent: object, state_name: str, model: dict ):
         self.initialized = False
+        assert( parent )
+        assert( type( parent ) == sm_layout )
+        self.parent = parent
         assert( state_name )
         assert( state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL )
         self.name = state_name
         assert( model )
         self.model = model
-        assert( canvas )
-        #assert( type( canvas ) == tk.Canvas )
-        self.canvas = canvas
 
         #print( f"start/final model={self.model}." )
         # Set border, which for the start symbol, also sets the width and height.
@@ -135,8 +163,6 @@ class sm_start_final_state_layout():
             self.y = DEF_STATE_TOP
             have_changes = True
 
-        self.drag_start_x = 0
-        self.drag_start_y = 0
         self.initialized = True
 
     def set_border_thickness( self, weight: int ):
@@ -155,61 +181,91 @@ class sm_start_final_state_layout():
     def drag_start( self, event ):
         self.drag_start_x = event.x
         self.drag_start_y = event.y
+        self.drag_x = self.x
+        self.drag_y = self.y
+
+        print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
+        self.prev_outline = self.parent.canvas.create_rectangle(
+            self.x,              self.y,
+            self.x + self.w - 1, self.y + self.h - 1,
+            outline = "#888888" )
     
     def drag_motion( self, event ):
-        new_x = self.x - self.drag_start_x + event.x
+        new_x = self.x + ( event.x - self.drag_start_x )
         # Round it up if closer to next grid point.
         snap_x = new_x + ( GRID_PIX / 2 )
         snap_x = int( snap_x / GRID_PIX )
         snap_x *= GRID_PIX
         
-        new_y = self.y - self.drag_start_y + event.y
+        new_y = self.y + ( event.y - self.drag_start_y )
         snap_y = new_y + ( GRID_PIX / 2 )
         snap_y = int( snap_y / GRID_PIX )
         snap_y *= GRID_PIX
         
-        self.x = snap_x
-        self.y = snap_y
-        self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
-        self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
-        global have_changes
-        have_changes = True
+        if snap_x != self.drag_x or snap_y != self.drag_y:
+            self.parent.canvas.delete( self.prev_outline )
+
+            self.drag_x = snap_x
+            self.drag_y = snap_y
+            print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
+            self.prev_outline = self.parent.canvas.create_rectangle(
+                snap_x,              snap_y,
+                snap_x + self.w - 1, snap_y + self.h - 1,
+                outline = "#888888" )
+
+            global have_changes
+            have_changes = True
+            
+    def drag_stop( self, event ):
+        self.parent.canvas.delete( self.prev_outline )
+
+        if self.x != self.drag_x or self.y != self.drag_y:
+            self.x = self.drag_x
+            self.y = self.drag_y
+            self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
+            self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
+
+            print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            self.parent.paint()
     
     def paint( self ):
+        print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+
         # Create a simple filled circle.
         # Note: The bottom and right sides of the arc outline box
         #       specify the last position, not last + 1 (as opposed to rectangles).
-        circle = self.canvas.create_oval( 0, 0, self.w - 1, self.h - 1,
+        circle = self.parent.canvas.create_oval(
+            self.x + 0,          self.y + 0,
+            self.x + self.w - 1, self.y + self.h - 1,
             width = 0, fill = "black", activefill = "darkgreen" )
         # Make it dragable.
-        self.canvas.tag_bind( circle, sequence = "<Button-1>", func = self.drag_start )
-        self.canvas.tag_bind( circle, sequence = "<B1-Motion>", func = self.drag_motion )
+        self.parent.canvas.tag_bind( circle, sequence = "<Button-1>", func = self.drag_start )
+        self.parent.canvas.tag_bind( circle, sequence = "<B1-Motion>", func = self.drag_motion )
+        self.parent.canvas.tag_bind( circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
         # Add a white circle in the center if this is a final state.
         if self.name == HSM_RSVD_FINAL:
             radius = self.crnr_size / 2
-            inner_circle = self.canvas.create_oval( radius, radius, ( radius * 3 ) - 1, ( radius * 3 ) - 1,
+            inner_circle = self.parent.canvas.create_oval(
+                self.x + radius,             self.y + radius,
+                self.x + ( radius * 3 ) - 1, self.y + ( radius * 3 ) - 1,
                 width = 0, fill = "white", activefill = "lightgreen" )
             # Make it dragable.
-            self.canvas.tag_bind( inner_circle, sequence = "<Button-1>", func = self.drag_start )
-            self.canvas.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<Button-1>", func = self.drag_start )
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
 
 # The State Layout Widget
 class sm_state_layout():
-    def __init__( self, state_name: str, model: dict, canvas: object ):
+    def __init__( self, parent: object, state_name: str, model: dict ):
+        assert( parent )
+        assert( type( parent ) == sm_layout )
+        self.parent = parent
         assert( state_name )
         self.name = state_name
         assert( model )
         self.model = model
-        assert( canvas )
-        #assert( type( canvas ) == tk.Canvas )
-        print( f"canvas type = {type( canvas )}" )
-        self.canvas = canvas
-        
-        #super( sm_state_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
-        #my_locals = {**locals()}
-        #print( f"locals is {my_locals}." )
 
         # Either read the layout from the model or provide a default one.
         global have_changes
@@ -238,13 +294,6 @@ class sm_state_layout():
         if self.h is None:
             self.h = DEF_STATE_HGT
             have_changes = True
-        
-        self.drag_start_x = 0
-        self.drag_start_y = 0
-        self.most_wid = -1
-        self.most_hgt = -1
-        self.prev_wid = -1
-        self.prev_hgt = -1
 
         self.set_border_thickness( BRD_WEIGHT_THN )
 
@@ -262,47 +311,67 @@ class sm_state_layout():
             self.crnr_size = THK_CRNR_SIZE
             self.titl_size = THK_TITL_SIZE
 
-    def drag_start( self, event ):
+    def size_drag_start( self, event ):
         self.drag_start_x = event.x
         self.drag_start_y = event.y
+        self.drag_x = self.x
+        self.drag_y = self.y
+
+        self.prev_wid = self.w
+        self.prev_hgt = self.h
+        self.most_wid = self.w
+        self.most_hgt = self.h
+        self.offs_wid = self.x + self.w - event.x
+        self.offs_hgt = self.y + self.h - event.y
+
+        print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
+        self.prev_outline = self.parent.canvas.create_rectangle(
+            self.x,              self.y,
+            self.x + self.w - 1, self.y + self.h - 1,
+            outline = "#888888" )
     
     def drag_motion( self, event ):
-        new_x = self.x - self.drag_start_x + event.x
+        new_x = self.x + ( event.x - self.drag_start_x )
         # Round it up if closer to next grid point.
         snap_x = new_x + ( GRID_PIX / 2 )
         snap_x = int( snap_x / GRID_PIX )
         snap_x *= GRID_PIX
         
-        new_y = self.y - self.drag_start_y + event.y
+        new_y = self.y + ( event.y - self.drag_start_y )
         snap_y = new_y + ( GRID_PIX / 2 )
         snap_y = int( snap_y / GRID_PIX )
         snap_y *= GRID_PIX
         
-        self.x = snap_x
-        self.y = snap_y
-        self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
-        self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
-        global have_changes
-        have_changes = True
-    
-    def size_start( self, event ):
-        curr_wid = self.w
-        curr_hgt = self.h
-        self.prev_wid = curr_wid
-        self.prev_hgt = curr_hgt
-        self.most_wid = curr_wid
-        self.most_hgt = curr_hgt
-        self.offs_wid = curr_wid - event.x
-        self.offs_hgt = curr_hgt - event.y
+        if snap_x != self.drag_x or snap_y != self.drag_y:
+            self.parent.canvas.delete( self.prev_outline )
 
-        self.prev_outline = self.create_rectangle(
-            0, 0, self.w - 1, self.h - 1,
-            outline = "#888888" )
+            self.drag_x = snap_x
+            self.drag_y = snap_y
+            print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
+            self.prev_outline = self.parent.canvas.create_rectangle(
+                snap_x,              snap_y,
+                snap_x + self.w - 1, snap_y + self.h - 1,
+                outline = "#888888" )
+
+            global have_changes
+            have_changes = True
+            
+    def drag_stop( self, event ):
+        self.parent.canvas.delete( self.prev_outline )
+
+        if self.x != self.drag_x or self.y != self.drag_y:
+            self.x = self.drag_x
+            self.y = self.drag_y
+            self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
+            self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
+
+            print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            self.parent.paint()
     
     def size_motion( self, event ):
-        self.delete( self.prev_outline )
+        self.parent.canvas.delete( self.prev_outline )
         
-        temp_wid = event.x + self.offs_wid
+        temp_wid = event.x - self.x + self.offs_wid
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
         # Round it up if closer to next grid point.
@@ -311,7 +380,7 @@ class sm_state_layout():
         temp_wid = snap_x * GRID_PIX
         self.prev_wid = temp_wid
             
-        temp_hgt = event.y + self.offs_wid
+        temp_hgt = event.y - self.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
         snap_y = temp_hgt + ( GRID_PIX / 2 )
@@ -319,13 +388,14 @@ class sm_state_layout():
         temp_hgt = snap_y * GRID_PIX
         self.prev_hgt = temp_hgt
 
-        #print( f"Mov ({temp_wid},{temp_hgt})" )
-        self.prev_outline = self.create_rectangle(
-            0, 0, temp_wid - 1, temp_hgt - 1,
+        #print( f"sm prev_outline {self.x},{self.y},{self.x + temp_wid},{self.y + temp_hgt}" )
+        self.prev_outline = self.parent.canvas.create_rectangle(
+            self.x + 0,            self.y + 0,
+            self.x + temp_wid - 1, self.y + temp_hgt - 1,
             outline = "#888888" )
 
     def size_stop( self, event ):
-        temp_wid = event.x + self.offs_wid
+        temp_wid = event.x - self.x + self.offs_wid
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
         # Round it up if closer to next grid point.
@@ -333,7 +403,7 @@ class sm_state_layout():
         snap_x = int( snap_x / GRID_PIX )
         temp_wid = snap_x * GRID_PIX
 
-        temp_hgt = event.y + self.offs_wid
+        temp_hgt = event.y - self.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
         snap_y = temp_hgt + ( GRID_PIX / 2 )
@@ -344,123 +414,153 @@ class sm_state_layout():
         self.h = temp_hgt
         self.model[ HSM_RSVD_LYOUT ][ "w" ] = self.w
         self.model[ HSM_RSVD_LYOUT ][ "h" ] = self.h
-        self.paint()
+        #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+        self.parent.paint()
         global have_changes
         have_changes = True
         
     def paint( self ):
-        #canv_wid = self.canvas.winfo_width()
-        #canv_hgt = self.canvas.winfo_height()
-        #print( f"sm paint canv = {canv_wid}x{canv_hgt}" )
-        #canv_wid -= 1
-        #canv_hgt -= 1
-        #self.canvas.create_line( 0, 0, canv_wid, canv_hgt, width = self.line_size )
-        #self.canvas.create_line( canv_wid, 0, 0, canv_hgt, width = self.line_size )
-        
+        print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+
         # Create a rounded rectangle along the edges of this canvas.
         # Note: For widths greater than 1, x and y coordinates relate
         #       to the center of the line or arc.
-        top_ctr_y = self.y + 0      + ( self.line_size / 2 )
-        rgt_ctr_x = self.x + self.w - ( self.line_size / 2 )
-        btm_ctr_y = self.y + self.h - ( self.line_size / 2 )
-        lft_ctr_x = self.x + 0      + ( self.line_size / 2 )
+        top_ctr_y = 0      + ( self.line_size / 2 )
+        rgt_ctr_x = self.w - ( self.line_size / 2 )
+        btm_ctr_y = self.h - ( self.line_size / 2 )
+        lft_ctr_x = 0      + ( self.line_size / 2 )
         # Compute Arc Endpoints
         # Note: The x,y coordinates for the arc are to enclose a full ellipse.
-        top_arc_y = self.y + 0      + ( self.crnr_size * 2 )
-        rgt_arc_x = self.x + self.w - ( self.crnr_size * 2 )
-        btm_arc_y = self.y + self.h - ( self.crnr_size * 2 )
-        lft_arc_x = self.x + 0      + ( self.crnr_size * 2 )
+        top_arc_y = 0      + ( self.crnr_size * 2 )
+        rgt_arc_x = self.w - ( self.crnr_size * 2 )
+        btm_arc_y = self.h - ( self.crnr_size * 2 )
+        lft_arc_x = 0      + ( self.crnr_size * 2 )
 
+        #paint_wid = self.w - 1
+        #paint_hgt = self.h - 1
+        #self.parent.canvas.create_line( self.x, self.y, self.x + paint_wid, self.y + paint_hgt, width = self.line_size, arrow = "last" )
+        #self.parent.canvas.create_line( self.x + paint_wid, self.y, self.x, self.y + paint_hgt, width = self.line_size, arrow = "last" )
+        
         # Set up the state name print area.
         title_posn_x = lft_arc_x
-        title_posn_y = self.y + self.line_size
+        title_posn_y = self.line_size
         title_size_x = rgt_arc_x - lft_arc_x
         title_size_y = self.titl_size
         title_cntr_x = title_posn_x + int( title_size_x / 2 )
         title_cntr_y = title_posn_y + int( title_size_y / 2 )
-        title_text = self.canvas.create_text( title_cntr_x, title_cntr_y, text = self.name,
-            justify = "center", width = 0, activefill = "darkgreen" )
-        # Drag the state widget using the title bar.
-        self.canvas.tag_bind( title_text, sequence = "<Button-1>", func = self.drag_start )
-        self.canvas.tag_bind( title_text, sequence = "<B1-Motion>", func = self.drag_motion )
-
-        # Resize the state widget using the bottom right corner.
-        size_rect = self.canvas.create_rectangle(
-            rgt_arc_x, btm_arc_y, rgt_ctr_x, btm_ctr_y,
+        title_rect = self.parent.canvas.create_rectangle(
+            self.x + title_posn_x, self.y + title_posn_y,
+            self.x + title_posn_x + title_size_x, self.y + title_posn_y + title_size_y,
             width = 0,
             activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
-        self.canvas.tag_bind( size_rect, sequence = "<Button-1>", func = self.size_start )
-        self.canvas.tag_bind( size_rect, sequence = "<B1-Motion>", func = self.size_motion )
-        self.canvas.tag_bind( size_rect, sequence = "<ButtonRelease-1>", func = self.size_stop )
-        
+        title_text = self.parent.canvas.create_text(
+            self.x + title_cntr_x, self.y + title_cntr_y,
+            text = self.name, justify = "center", width = 0, activefill = "darkgreen" )
+        # Drag the state widget using the title bar.
+        self.parent.canvas.tag_bind( title_text, sequence = "<Button-1>", func = self.size_drag_start )
+        self.parent.canvas.tag_bind( title_text, sequence = "<B1-Motion>", func = self.drag_motion )
+        self.parent.canvas.tag_bind( title_text, sequence = "<ButtonRelease-1>", func = self.drag_stop )
+
+        # Resize the state widget using the bottom right corner.
+        size_rect = self.parent.canvas.create_rectangle(
+            self.x + rgt_arc_x, self.y + btm_arc_y,
+            self.x + rgt_ctr_x, self.y + btm_ctr_y,
+            width = 0,
+            activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
+        self.parent.canvas.tag_bind( size_rect, sequence = "<Button-1>", func = self.size_drag_start )
+        self.parent.canvas.tag_bind( size_rect, sequence = "<B1-Motion>", func = self.size_motion )
+        self.parent.canvas.tag_bind( size_rect, sequence = "<ButtonRelease-1>", func = self.size_stop )
+
         # Top Line
-        self.canvas.create_line(
-            self.x + 0      + self.crnr_size, top_ctr_y,
-            self.x + self.w - self.crnr_size, top_ctr_y,
+        self.parent.canvas.create_line(
+            self.x + 0      + self.crnr_size, self.y + top_ctr_y,
+            self.x + self.w - self.crnr_size, self.y + top_ctr_y,
             width = self.line_size )
             
         # Upper Right Corner
         # Note: The bottom and right sides of the arc outline box
         #       specify the last position, not last + 1.
-        self.canvas.create_arc(
-            rgt_arc_x    , top_ctr_y    ,
-            rgt_ctr_x - 1, top_arc_y - 1,
+        self.parent.canvas.create_arc(
+            self.x + rgt_arc_x    , self.y + top_ctr_y    ,
+            self.x + rgt_ctr_x - 1, self.y + top_arc_y - 1,
             start = 0, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Right Line
-        self.canvas.create_line(
-            rgt_ctr_x, self.y + 0      + self.crnr_size,
-            rgt_ctr_x, self.y + self.h - self.crnr_size,
+        self.parent.canvas.create_line(
+            self.x + rgt_ctr_x, self.y + 0      + self.crnr_size,
+            self.x + rgt_ctr_x, self.y + self.h - self.crnr_size,
             width = self.line_size )
             
         # Bottom Right Corner
-        self.canvas.create_arc(
-            rgt_arc_x    , btm_arc_y    ,
-            rgt_ctr_x - 1, btm_ctr_y - 1,
+        self.parent.canvas.create_arc(
+            self.x + rgt_arc_x    , self.y + btm_arc_y    ,
+            self.x + rgt_ctr_x - 1, self.y + btm_ctr_y - 1,
             start = 270, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Bottom Line
-        self.canvas.create_line(
-            self.x + self.w - self.crnr_size, btm_ctr_y,
-            self.x + 0      + self.crnr_size, btm_ctr_y,
+        self.parent.canvas.create_line(
+            self.x + self.w - self.crnr_size, self.y + btm_ctr_y,
+            self.x + 0      + self.crnr_size, self.y + btm_ctr_y,
             width = self.line_size )
             
         # Bottom Left Corner
-        self.canvas.create_arc(
-            lft_ctr_x    , btm_arc_y    ,
-            lft_arc_x - 1, btm_ctr_y - 1,
+        self.parent.canvas.create_arc(
+            self.x + lft_ctr_x    , self.y + btm_arc_y    ,
+            self.x + lft_arc_x - 1, self.y + btm_ctr_y - 1,
             start = 180, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Left Line
-        self.canvas.create_line(
-            lft_ctr_x, self.y + self.h - self.crnr_size, 
-            lft_ctr_x, self.y + 0      + self.crnr_size,
+        self.parent.canvas.create_line(
+            self.x + lft_ctr_x, self.y + self.h - self.crnr_size, 
+            self.x + lft_ctr_x, self.y + 0      + self.crnr_size,
             width = self.line_size )
             
         # Top Left Corner
-        self.canvas.create_arc(
-            lft_ctr_x    , top_ctr_y    ,
-            lft_arc_x - 1, top_arc_y - 1,
+        self.parent.canvas.create_arc(
+            self.x + lft_ctr_x    , self.y + top_ctr_y    ,
+            self.x + lft_arc_x - 1, self.y + top_arc_y - 1,
             start = 90, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Section off the title bar.
-        self.canvas.create_line(
-            lft_ctr_x, self.y + self.line_size + self.titl_size, 
-            rgt_ctr_x, self.y + self.line_size + self.titl_size, 
+        self.parent.canvas.create_line(
+            self.x + lft_ctr_x, self.y + self.line_size + self.titl_size, 
+            self.x + rgt_ctr_x, self.y + self.line_size + self.titl_size, 
             width = self.line_size )
 
 # The State Machine Layout Widget
-class sm_canvas( tk.Canvas ):
-    def __init__( self, *args, model = None, **kwargs ):
-        super( sm_canvas, self ).__init__( bd = 0, highlightthickness = 0, relief = 'ridge', *args, **kwargs )
+class sm_layout( tk.Frame ):
+    def __init__( self, *args, model: dict = None, **kwargs ):
+        #print( f"frm = {self} = {self.winfo_width()}x{self.winfo_height()}+{self.winfo_x()}+{self.winfo_y()}" )
+        super( sm_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.grid_propagate( False )
         self.update()
-        print( f"Wrk Frame = {self.winfo_width()}x{self.winfo_height()}" )
+
+        # Figure out the canvas size needed.
+        # Start with the frame size and then expand if needed by the model.
+        canv_w = self.winfo_width()
+        canv_h = self.winfo_height()
+        canv_geom = find_canvas_rect( model, min_w = canv_w, min_h = canv_h )
+        view_str = f"{canv_geom[ "x" ]} {canv_geom[ "y" ]} {canv_geom[ "x" ] + canv_w} {canv_geom[ "y" ] + canv_h}"
+        #print( f"F Wrk Frame = {self.winfo_width()}x{self.winfo_height()}" )
+        self.canvas = tk.Canvas( master = self, width = canv_geom[ "w" ], height = canv_geom[ "h" ], bd = 0, highlightthickness = 0, relief = 'ridge', scrollregion = view_str )
+        self.canvas.grid( row = 0, column = 0, padx = 0, pady = 0 )
+        self.canvas.grid_propagate( False )
+        self.canvas.update()
+        print( f"C Wrk Frame = {self.canvas.winfo_width()}x{self.canvas.winfo_height()}" )
+
+        ## Size paint area to the current app window size.
+        #canv_wid = self.winfo_width()
+        #canv_hgt = self.winfo_height()
+        #print( f"paint canv = {canv_wid}x{canv_hgt}" )
+        #size_rect = self.create_rectangle(
+        #    0, 0, canv_wid, canv_hgt, width = 0, fill = "white" )
+        #    #, activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
+        
         #print( f"Inp model:" )
         #print( json.dumps( model, indent = 2 ) )
         # Since we can't alter a dictionary during iteration, we create a new copy, and use that subsequently.
@@ -475,10 +575,10 @@ class sm_canvas( tk.Canvas ):
             #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
 
             if state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL:
-                new_widget = sm_start_final_state_layout( state_name, state, self )
+                new_widget = sm_start_final_state_layout( self, state_name, state )
                 self.state_widgets.append( new_widget )
             else:
-                new_widget = sm_state_layout( state_name, state, self )
+                new_widget = sm_state_layout( self, state_name, state )
                 self.state_widgets.append( new_widget )
 
             # Ensure we have at least a default layout for each transition.
@@ -571,21 +671,19 @@ class sm_canvas( tk.Canvas ):
 
     def paint( self ):
         # Blank out the canvas.
-        self.delete( "all" )
-        
+        self.canvas.delete( "all" )
         self.update_idletasks()
 
         # Size paint area to the current app window size.
         canv_wid = self.winfo_width()
         canv_hgt = self.winfo_height()
-        print( f"paint canv = {canv_wid}x{canv_hgt}" )
-        size_rect = self.create_rectangle(
+        size_rect = self.canvas.create_rectangle(
             0, 0, canv_wid, canv_hgt, width = 0, fill = "white" )
             #, activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
         #canv_wid -= 1
         #canv_hgt -= 1
-        #self.create_line( 0, 0, canv_wid, canv_hgt, width = self.line_size )
-        #self.create_line( canv_wid, 0, 0, canv_hgt, width = self.line_size )
+        #self.canvas.create_line( 0, 0, canv_wid, canv_hgt, width = self.line_size, arrow = "last" )
+        #self.canvas.create_line( canv_wid, 0, 0, canv_hgt, width = self.line_size, arrow = "last" )
 
         for state in self.state_widgets:
             # Paint each state.
@@ -606,8 +704,8 @@ class sm_canvas( tk.Canvas ):
                 for point_idx in range( len( path ) - 1 ):
                     src_pt = path[ point_idx + 0 ]
                     dst_pt = path[ point_idx + 1 ]
-                    print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}' )
-                    self.create_line(
+                    #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}' )
+                    self.canvas.create_line(
                         src_pt[ "x" ], src_pt[ "y" ], 
                         dst_pt[ "x" ], dst_pt[ "y" ], 
                         width = self.line_size )
