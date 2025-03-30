@@ -7,6 +7,7 @@ from tkinter import ttk
 from tkinter import *
 #from tkinter.messagebox import showinfo
 from PIL import Image, ImageTk
+import traceback
 import util
 # python -m pip install PyYAML
 #import yaml
@@ -69,6 +70,8 @@ this_module = sys.modules[__name__]
 # A flag showing that one or more changes has been made, and the model needs
 # to be saved to file again.
 have_changes = False
+
+style = { "Border Weight": BRD_WEIGHT_THN }
 
 
 def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
@@ -144,7 +147,7 @@ class sm_start_final_state_layout():
 
         #print( f"start/final model={self.model}." )
         # Set border, which for the start symbol, also sets the width and height.
-        self.set_border_thickness( BRD_WEIGHT_THN )
+        self.set_border_thickness( style.get( "Border Weight", BRD_WEIGHT_THN ) )
 
         # Either read the layout from the model or provide a default one.
         global have_changes
@@ -184,7 +187,7 @@ class sm_start_final_state_layout():
         self.drag_x = self.x
         self.drag_y = self.y
 
-        print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
+        #print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
         self.prev_outline = self.parent.canvas.create_rectangle(
             self.x,              self.y,
             self.x + self.w - 1, self.y + self.h - 1,
@@ -207,7 +210,7 @@ class sm_start_final_state_layout():
 
             self.drag_x = snap_x
             self.drag_y = snap_y
-            print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
+            #print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
             self.prev_outline = self.parent.canvas.create_rectangle(
                 snap_x,              snap_y,
                 snap_x + self.w - 1, snap_y + self.h - 1,
@@ -225,11 +228,12 @@ class sm_start_final_state_layout():
             self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
             self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
 
-            print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            self.parent.reroute_paths( self )
             self.parent.paint()
     
     def paint( self ):
-        print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+        #print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
 
         # Create a simple filled circle.
         # Note: The bottom and right sides of the arc outline box
@@ -267,6 +271,8 @@ class sm_state_layout():
         assert( model )
         self.model = model
 
+        self.set_border_thickness( style.get( "Border Weight", BRD_WEIGHT_THN ) )
+
         # Either read the layout from the model or provide a default one.
         global have_changes
 
@@ -295,8 +301,6 @@ class sm_state_layout():
             self.h = DEF_STATE_HGT
             have_changes = True
 
-        self.set_border_thickness( BRD_WEIGHT_THN )
-
     def set_border_thickness( self, weight: int ):
         if ( weight == BRD_WEIGHT_THN ):
             self.line_size = THN_LINE_SIZE
@@ -324,7 +328,7 @@ class sm_state_layout():
         self.offs_wid = self.x + self.w - event.x
         self.offs_hgt = self.y + self.h - event.y
 
-        print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
+        #print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
         self.prev_outline = self.parent.canvas.create_rectangle(
             self.x,              self.y,
             self.x + self.w - 1, self.y + self.h - 1,
@@ -347,7 +351,7 @@ class sm_state_layout():
 
             self.drag_x = snap_x
             self.drag_y = snap_y
-            print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
+            #print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
             self.prev_outline = self.parent.canvas.create_rectangle(
                 snap_x,              snap_y,
                 snap_x + self.w - 1, snap_y + self.h - 1,
@@ -365,7 +369,8 @@ class sm_state_layout():
             self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
             self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
 
-            print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            self.parent.reroute_paths( self )
             self.parent.paint()
     
     def size_motion( self, event ):
@@ -410,17 +415,20 @@ class sm_state_layout():
         snap_y = int( snap_y / GRID_PIX )
         temp_hgt = snap_y * GRID_PIX
 
-        self.w = temp_wid
-        self.h = temp_hgt
-        self.model[ HSM_RSVD_LYOUT ][ "w" ] = self.w
-        self.model[ HSM_RSVD_LYOUT ][ "h" ] = self.h
-        #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
-        self.parent.paint()
-        global have_changes
-        have_changes = True
+        if self.w != temp_wid or self.h != temp_hgt:
+            self.w = temp_wid
+            self.h = temp_hgt
+            self.model[ HSM_RSVD_LYOUT ][ "w" ] = self.w
+            self.model[ HSM_RSVD_LYOUT ][ "h" ] = self.h
+            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
+            
+            self.parent.reroute_paths( self )
+            self.parent.paint()
+            global have_changes
+            have_changes = True
         
     def paint( self ):
-        print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+        #print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
 
         # Create a rounded rectangle along the edges of this canvas.
         # Note: For widths greater than 1, x and y coordinates relate
@@ -551,16 +559,10 @@ class sm_layout( tk.Frame ):
         self.canvas.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.canvas.grid_propagate( False )
         self.canvas.update()
-        print( f"C Wrk Frame = {self.canvas.winfo_width()}x{self.canvas.winfo_height()}" )
+        #print( f"C Wrk Frame = {self.canvas.winfo_width()}x{self.canvas.winfo_height()}" )
+        curr_border_weight = style.get( "Border Weight", BRD_WEIGHT_THN )
+        self.set_border_thickness( curr_border_weight )
 
-        ## Size paint area to the current app window size.
-        #canv_wid = self.winfo_width()
-        #canv_hgt = self.winfo_height()
-        #print( f"paint canv = {canv_wid}x{canv_hgt}" )
-        #size_rect = self.create_rectangle(
-        #    0, 0, canv_wid, canv_hgt, width = 0, fill = "white" )
-        #    #, activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
-        
         #print( f"Inp model:" )
         #print( json.dumps( model, indent = 2 ) )
         # Since we can't alter a dictionary during iteration, we create a new copy, and use that subsequently.
@@ -570,7 +572,7 @@ class sm_layout( tk.Frame ):
         self.state_widgets = []
         states = model.get( HSM_RSVD_STATES, {} )
         for state_name, state in states.items():
-            self.model[ "states" ][ state_name ] = state
+            self.model[ HSM_RSVD_STATES ][ state_name ] = state
             state_outline = sm_state_outline( state )
             #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
 
@@ -583,7 +585,7 @@ class sm_layout( tk.Frame ):
 
             # Ensure we have at least a default layout for each transition.
             #print( f" {state_name} - {state}" )
-            print( f"{state_name}" )
+            #print( f"{state_name}" )
             transitions = dict( state.get( HSM_RSVD_TRAN ) )
             #print( f"  tr = { transitions }" )
             for transition_name, transition in transitions.items():
@@ -602,14 +604,14 @@ class sm_layout( tk.Frame ):
                         assert( False )
         #print( f"Out model:" )
         #print( json.dumps( self.model, indent = 2 ) )
-        self.set_border_thickness( BRD_WEIGHT_THN )
 
     def set_border_thickness( self, weight: int ):
-        # Update each of the state widgets.
-        for widget in self.state_widgets:
-            widget.set_border_thickness( weight )
+        if hasattr( self, "state_widgets" ):
+            # Update each of the state widgets.
+            for widget in self.state_widgets:
+                widget.set_border_thickness( weight )
 
-        # Update the transation lines.
+        # Update the transition lines.
         if ( weight == BRD_WEIGHT_THN ):
             self.line_size = THN_LINE_SIZE
             self.crnr_size = THN_CRNR_SIZE
@@ -619,8 +621,6 @@ class sm_layout( tk.Frame ):
         if ( weight == BRD_WEIGHT_THK ):
             self.line_size = THK_LINE_SIZE
             self.crnr_size = THK_CRNR_SIZE
-
-        self.paint()
 
     # This just gives the simplest default path.
     #   Find x and y mid-points on each state.
@@ -662,10 +662,12 @@ class sm_layout( tk.Frame ):
         else:
             # Special case, a transition to self.
             # Construct a loop on the right side.
-            path = [ from_midpoints[ 2 ],
-              { "x": from_midpoints[ 2 ][ "x" ] + 10, "y": from_midpoints[ 2 ][ "y" ] },
-              { "x": from_midpoints[ 2 ][ "x" ] + 10, "y": from_midpoints[ 2 ][ "y" ] + 10 },
-              { "x": from_midpoints[ 2 ][ "x" ],      "y": from_midpoints[ 2 ][ "y" ] + 10 } ]
+            side_idx = 1
+            box_size = self.crnr_size * 2
+            path = [ from_midpoints[ side_idx ],
+              { "x": from_midpoints[ side_idx ][ "x" ] + box_size, "y": from_midpoints[ side_idx ][ "y" ] },
+              { "x": from_midpoints[ side_idx ][ "x" ] + box_size, "y": from_midpoints[ side_idx ][ "y" ] + box_size },
+              { "x": from_midpoints[ side_idx ][ "x" ],            "y": from_midpoints[ side_idx ][ "y" ] + box_size } ]
 
         return path
 
@@ -691,27 +693,68 @@ class sm_layout( tk.Frame ):
         
             # Then add the transitions.
             #print( f"state.model={state.model}" )
-            if state.name == HSM_RSVD_START:
-                # Get the transition info.
-                assert( HSM_RSVD_TRAN in state.model )
-                tran = state.model[ HSM_RSVD_TRAN ]
-                assert( len( tran ) == 1 )
-                assert( HSM_RSVD_AUTO in tran )
-                tran_data = tran[ HSM_RSVD_AUTO ]
-                #print( f"tr paint = {tran_data}" )
-                # See if a path is provided.
-                path = tran_data.get( HSM_RSVD_PATH )
-                for point_idx in range( len( path ) - 1 ):
-                    src_pt = path[ point_idx + 0 ]
-                    dst_pt = path[ point_idx + 1 ]
-                    #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}' )
-                    self.canvas.create_line(
-                        src_pt[ "x" ], src_pt[ "y" ], 
-                        dst_pt[ "x" ], dst_pt[ "y" ], 
-                        width = self.line_size )
-            elif state.name == HSM_RSVD_FINAL:
+            if state.name == HSM_RSVD_FINAL:
                 # The final state can have no transitions out of it.
                 assert( HSM_RSVD_TRAN not in state.model )
             else:
                 # General case.
-                pass
+                # Get the transition info.
+                transitions = state.model.get( HSM_RSVD_TRAN )
+                for transition_name, transition in transitions.items():
+                    if state.name == HSM_RSVD_START:
+                        assert( len( transitions ) == 1 )
+                        assert( HSM_RSVD_AUTO in transitions )
+                    #print( f"tr paint = {transition}" )
+                    # See if a path is provided.
+                    path = transition.get( HSM_RSVD_PATH )
+                    for point_idx in range( len( path ) - 1 ):
+                        src_pt = path[ point_idx + 0 ]
+                        dst_pt = path[ point_idx + 1 ]
+                        # Regular line segment, vs add arrow to final line segment.
+                        arrow = "none"
+                        if point_idx == len( path ) - 2:
+                            arrow = "last"
+                        #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}, {arrow}' )
+                        self.canvas.create_line(
+                            src_pt[ "x" ], src_pt[ "y" ], 
+                            dst_pt[ "x" ], dst_pt[ "y" ], 
+                            width = self.line_size, arrow = arrow )
+
+    # This method is for internal use only to facilitate a recursive tree traversal.
+    # Call reroute_paths() instead.
+    def reroute_changed_paths( self, model: dict ) -> dict:
+        changed_model = dict( model )
+        #print( json.dumps( model, indent = 2 ) )
+
+        # Check the states at the top level of the model.
+        states = model.get( HSM_RSVD_STATES, {} )
+        if states:
+            for state_name, state in states.items():
+                
+                # Does this state have the changed_state as a destination?
+                #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
+                transitions = dict( state.get( HSM_RSVD_TRAN ) )
+                for transition_name, transition in transitions.items():
+                    path = transition.get( HSM_RSVD_PATH )
+                    if path is not None:
+                        dst_state_name = transition.get( HSM_RSVD_DEST )
+                        if dst_state_name:
+                            if dst_state_name == self.changed_state.name:
+                                dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
+                                #print( f"Need to change path from {state_name} to {self.changed_state.name}" )
+                                path = self.find_default_path( state, transition, dst_state )
+                                changed_model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
+                        else:
+                            print( f"Transition missing destination { transition_name }: { transition }" )
+                            assert( False )
+            changed_model[ HSM_RSVD_STATES ][ state_name ] = state
+            
+        return changed_model
+
+    def reroute_paths( self, changed_state: object ) -> dict:
+        assert( type( changed_state ) == sm_state_layout or type( changed_state ) == sm_start_final_state_layout )
+        self.changed_state = changed_state
+        #print( f"changed_state = '{self.changed_state.name}'" )
+        #print( json.dumps( self.model, indent = 2 ) )
+        self.model = self.reroute_changed_paths( self.model )
+        #print( json.dumps( self.model, indent = 2 ) )
