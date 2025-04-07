@@ -74,6 +74,55 @@ have_changes = False
 style = { "Border Weight": BRD_WEIGHT_THN }
 
 
+# These 3 helper functions check for / find the intersection of lines in a 2-D plane.
+def ccw( A: dict, B: dict, C: dict ) -> bool:
+    return ( C[ "y" ] - A[ "y" ] ) * ( B[ "x" ] - A[ "x" ] ) > ( B[ "y" ] - A[ "y" ] ) * ( C[ "x" ] - A[ "x" ] )
+# Return true if line segments AB and CD intersect
+def do_lines_intersect( A: dict, B: dict, C: dict, D: dict ) -> bool:
+    #print( f"li: A = {A}\n    B = {B}\n    C = {C}\n    D = {D}" )
+    return ccw( A, C, D ) != ccw( B, C, D ) and ccw( A, B, C ) != ccw( A, B, D )
+
+# Return the intersection point if line segments AB and CD intersect, otherwise returns None.
+# Formula:
+# Given lines (a1, a2) and (b1, b2) and the intersection p
+# (if the denominator is zero, the lines have no unique intersection),
+#     | | a1 a2 |  a1 - a2 |
+#     | | b1 b2 |  b1 - b2 |
+# p = ----------------------
+#      | a1 - a2  b1 - b2 |
+#def line_intersection( a1: dict, a2: dict, b1: dict, b2: dict ) -> dict:
+#    xdiff = (a1['x'] - a2['x'], b1['x'] - b2['x'])
+#    ydiff = (a1['y'] - a2['y'], b1['y'] - b2['y'])
+#
+#    def det( j, k ):
+#        return j[0] * k[1] - j[1] * k[0]
+#
+#    div = det( xdiff, ydiff )
+#    if div == 0:
+#        return None
+#
+#    #d = ( det( *line1 ), det( *line2 ) )
+#    d = ( det( ( a1['x'], a1['y'] ), ( a2['x'], a2['y'] ) ), det( ( b1['x'], b1['y'] ), ( b2['x'], b2['y'] ) ) )
+#    x = det( d, xdiff ) / div
+#    y = det( d, ydiff ) / div
+#    return {'x': x, 'y': y}
+    
+def line_intersection(line1, line2) -> dict:
+    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    div = det(xdiff, ydiff)
+    if div == 0:
+       return None
+
+    d = (det(*line1), det(*line2))
+    x = det(d, xdiff) / div
+    y = det(d, ydiff) / div
+    return {'x': x, 'y': y}    
+
 def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
     if model:
         # Push extents out as needed.
@@ -109,16 +158,17 @@ class sm_state_outline():
         self.wid = DEF_STATE_WID
         self.hgt = DEF_STATE_HGT
 
-        layout = state.get( HSM_RSVD_LYOUT )
-        if layout:
-            if ( "x" in layout.keys() ):
-                self.lft = layout[ 'x' ]
-            if ( "y" in layout.keys() ):
-                self.top = layout[ 'y' ]
-            if ( "w" in layout.keys() ):
-                self.wid = layout[ 'w' ]
-            if ( "h" in layout.keys() ):
-                self.hgt = layout[ 'h' ]
+        if state:
+            layout = state.get( HSM_RSVD_LYOUT )
+            if layout:
+                if ( 'x' in layout.keys() ):
+                    self.lft = layout[ 'x' ]
+                if ( 'y' in layout.keys() ):
+                    self.top = layout[ 'y' ]
+                if ( 'w' in layout.keys() ):
+                    self.wid = layout[ 'w' ]
+                if ( 'h' in layout.keys() ):
+                    self.hgt = layout[ 'h' ]
 
         #print( f"{self.lft},{self.top}-{self.wid}x{self.hgt}." )
 
@@ -129,7 +179,7 @@ class sm_state_outline():
         # Lower Right Corner
         x2 = self.lft + self.wid
         y2 = self.top + self.hgt
-        path = [ ( x1, y1 ), ( x2, y1 ), ( x2, y2 ), ( x1, y2 ) ]
+        path = [ {'x': x1, 'y': y1}, {'x': x2, 'y': y1}, {'x': x2, 'y': y2}, {'x': x1, 'y': y2}, {'x': x1, 'y': y1} ]
         return path
 
 # The Layout Widget for Start and Final States
@@ -572,8 +622,12 @@ class sm_layout( tk.Frame ):
         self.state_widgets = []
         states = model.get( HSM_RSVD_STATES, {} )
         for state_name, state in states.items():
-            self.model[ HSM_RSVD_STATES ][ state_name ] = state
             state_outline = sm_state_outline( state )
+            if state == {}:
+                # State had no layout info, use a default.
+                state = {'layout': {'x': state_outline.lft, 'y': state_outline.top, 'w': state_outline.wid, 'h': state_outline.hgt }}
+            #print( f"state {state_name} = {json.dumps( state, indent = 2 )}." )
+            self.model[ HSM_RSVD_STATES ][ state_name ] = state
             #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
 
             if state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL:
@@ -585,23 +639,23 @@ class sm_layout( tk.Frame ):
 
             # Ensure we have at least a default layout for each transition.
             #print( f" {state_name} - {state}" )
-            #print( f"{state_name}" )
-            transitions = dict( state.get( HSM_RSVD_TRAN ) )
-            #print( f"  tr = { transitions }" )
-            for transition_name, transition in transitions.items():
-                path = transition.get( HSM_RSVD_PATH )
-                if path is None:
-                    #print( f"1. {state_name} - {state}" )
-                    dst_state_name = transition.get( HSM_RSVD_DEST )
-                    if dst_state_name:
-                        dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
-                        path = self.find_default_path( state, transition, dst_state )
-                        self.model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
-                        global have_changes
-                        have_changes = True
-                    else:
-                        print( f"Transition missing destination { transition_name }: { transition }" )
-                        assert( False )
+            if state.get( HSM_RSVD_TRAN ):
+                transitions = dict( state.get( HSM_RSVD_TRAN ) )
+                #print( f"  tr = { transitions }" )
+                for transition_name, transition in transitions.items():
+                    path = transition.get( HSM_RSVD_PATH )
+                    if path is None:
+                        #print( f"1. {state_name} - {state}" )
+                        dst_state_name = transition.get( HSM_RSVD_DEST )
+                        if dst_state_name:
+                            dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
+                            path = self.find_default_path( state, transition, dst_state )
+                            self.model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
+                            global have_changes
+                            have_changes = True
+                        else:
+                            print( f"Transition missing destination { transition_name }: { transition }" )
+                            assert( False )
         #print( f"Out model:" )
         #print( json.dumps( self.model, indent = 2 ) )
 
@@ -622,6 +676,38 @@ class sm_layout( tk.Frame ):
             self.line_size = THK_LINE_SIZE
             self.crnr_size = THK_CRNR_SIZE
 
+    # This method checks a path against the current positions of the states, and
+    # if there are any transition line segments passing through another state,
+    # new segments are added such that the path goes around.
+    def find_clean_path( self, path: list ) -> list:
+        clean_path = []
+        for point_idx in range( len( path ) - 1 ):
+            # Check the path against each state machine.
+            # Points A and B will be the path segment.
+            A = path[ point_idx ]
+            B = path[ point_idx + 1 ]
+            for state_name, state in self.model.get( HSM_RSVD_STATES, {} ).items():
+                #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
+                state_outline = sm_state_outline( state ).get_path()
+                intersections = []
+                for state_corner_idx in range( len( state_outline ) - 1 ):
+                    # Points C and D will be an edge on the state outline.
+                    C = state_outline[ state_corner_idx ]
+                    D = state_outline[ state_corner_idx  + 1 ]
+                    #print( f"Checking {A},{B} vs {C},{D}" )
+                    if do_lines_intersect( A, B, C, D ):
+                        intersect_point = line_intersection( ( (A['x'], A['y']), (B['x'], B['y']) ),
+                                    ( (C['x'], C['y']), (D['x'], D['y']) ) )
+                        if intersect_point:
+                            #print( f"Warn: path seg {A},{B} crosses state edge {C},{D}" )
+                            intersections.append( state_corner_idx )
+                            print( f"Warn: path seg {A},{B} crosses state edge #{state_corner_idx}={C},{D} at {intersect_point}" )
+
+            clean_path.append( path[ point_idx ] )
+            
+        clean_path.append( path[ -1 ] )
+        return clean_path
+
     # This just gives the simplest default path.
     #   Find x and y mid-points on each state.
     #   Pick the shortest pair of midpoints for the first and last points in the path.
@@ -632,42 +718,43 @@ class sm_layout( tk.Frame ):
         from_outline = sm_state_outline( src_state ).get_path()
         to_outline = sm_state_outline( dst_state ).get_path()
         
-        # Duplicate the first point on the end for compute convenience.
-        from_outline.append( from_outline[ 0 ] )
-        to_outline.append( to_outline[ 0 ] )
         from_midpoints = []
         to_midpoints = []
         for corner_idx in range( len( from_outline ) - 1 ):
-            x = int( ( from_outline[ corner_idx ][0] + from_outline[ corner_idx + 1 ][0] ) / 2 )
-            y = int( ( from_outline[ corner_idx ][1] + from_outline[ corner_idx + 1 ][1] ) / 2 )
+            x = int( ( from_outline[ corner_idx ]['x'] + from_outline[ corner_idx + 1 ]['x'] ) / 2 )
+            y = int( ( from_outline[ corner_idx ]['y'] + from_outline[ corner_idx + 1 ]['y'] ) / 2 )
             from_midpoints.append( { "x": x, "y": y } )
             
-            x = int( ( to_outline[ corner_idx ][0] + to_outline[ corner_idx + 1 ][0] ) / 2 )
-            y = int( ( to_outline[ corner_idx ][1] + to_outline[ corner_idx + 1 ][1] ) / 2 )
-            to_midpoints.append( { "x": x, "y": y } )
+            x = int( ( to_outline[ corner_idx ]['x'] + to_outline[ corner_idx + 1 ]['x'] ) / 2 )
+            y = int( ( to_outline[ corner_idx ]['y'] + to_outline[ corner_idx + 1 ]['y'] ) / 2 )
+            to_midpoints.append( {'x': x, 'y': y} )
 
-        if src_state != dst_state:
-            # Compute distance between each from_midpoint and each to_midpoint, and find the min.
-            from_idx = 0
-            min_found = float( 'inf' )
-            for from_midpoint in from_midpoints:
-                for to_midpoint in to_midpoints:
-                    x_delt = to_midpoint[ "x" ] - from_midpoint[ "x" ]
-                    y_delt = to_midpoint[ "y" ] - from_midpoint[ "y" ]
-                    dist = ( x_delt * x_delt + y_delt * y_delt )
-                    if dist < min_found:
-                        min_found = dist
-                        path = [ from_midpoint, to_midpoint ]
-                    from_idx += 1
-        else:
+        if src_state == dst_state:
             # Special case, a transition to self.
             # Construct a loop on the right side.
             side_idx = 1
             box_size = self.crnr_size * 2
             path = [ from_midpoints[ side_idx ],
-              { "x": from_midpoints[ side_idx ][ "x" ] + box_size, "y": from_midpoints[ side_idx ][ "y" ] },
-              { "x": from_midpoints[ side_idx ][ "x" ] + box_size, "y": from_midpoints[ side_idx ][ "y" ] + box_size },
-              { "x": from_midpoints[ side_idx ][ "x" ],            "y": from_midpoints[ side_idx ][ "y" ] + box_size } ]
+              {'x': from_midpoints[ side_idx ]['x'] + box_size, 'y': from_midpoints[ side_idx ]['y'] },
+              {'x': from_midpoints[ side_idx ]['x'] + box_size, 'y': from_midpoints[ side_idx ]['y'] + box_size },
+              {'x': from_midpoints[ side_idx ]['x'],            'y': from_midpoints[ side_idx ]['y'] + box_size } ]
+        else:
+            # Compute distance between each from_midpoint and each to_midpoint, and find the min.
+            from_idx = 0
+            min_found = float( 'inf' )
+            for from_midpoint in from_midpoints:
+                for to_midpoint in to_midpoints:
+                    x_delt = to_midpoint['x'] - from_midpoint['x']
+                    y_delt = to_midpoint['y'] - from_midpoint['y']
+                    dist = ( x_delt * x_delt + y_delt * y_delt )
+                    if dist < min_found:
+                        min_found = dist
+                        path = [ from_midpoint, to_midpoint ]
+                    from_idx += 1
+                    
+            # If any path segment intersects (passes through) a state, add a point such that
+            # the path routes around it.
+            path = self.find_clean_path( path )
 
         return path
 
@@ -700,25 +787,26 @@ class sm_layout( tk.Frame ):
                 # General case.
                 # Get the transition info.
                 transitions = state.model.get( HSM_RSVD_TRAN )
-                for transition_name, transition in transitions.items():
-                    if state.name == HSM_RSVD_START:
-                        assert( len( transitions ) == 1 )
-                        assert( HSM_RSVD_AUTO in transitions )
-                    #print( f"tr paint = {transition}" )
-                    # See if a path is provided.
-                    path = transition.get( HSM_RSVD_PATH )
-                    for point_idx in range( len( path ) - 1 ):
-                        src_pt = path[ point_idx + 0 ]
-                        dst_pt = path[ point_idx + 1 ]
-                        # Regular line segment, vs add arrow to final line segment.
-                        arrow = "none"
-                        if point_idx == len( path ) - 2:
-                            arrow = "last"
-                        #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}, {arrow}' )
-                        self.canvas.create_line(
-                            src_pt[ "x" ], src_pt[ "y" ], 
-                            dst_pt[ "x" ], dst_pt[ "y" ], 
-                            width = self.line_size, arrow = arrow )
+                if transitions:
+                    for transition_name, transition in transitions.items():
+                        if state.name == HSM_RSVD_START:
+                            assert( len( transitions ) == 1 )
+                            assert( HSM_RSVD_AUTO in transitions )
+                        #print( f"tr paint = {transition}" )
+                        # See if a path is provided.
+                        path = transition.get( HSM_RSVD_PATH )
+                        for point_idx in range( len( path ) - 1 ):
+                            src_pt = path[ point_idx + 0 ]
+                            dst_pt = path[ point_idx + 1 ]
+                            # Regular line segment, vs add arrow to final line segment.
+                            arrow = "none"
+                            if point_idx == len( path ) - 2:
+                                arrow = "last"
+                            #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}, {arrow}' )
+                            self.canvas.create_line(
+                                src_pt[ "x" ], src_pt[ "y" ], 
+                                dst_pt[ "x" ], dst_pt[ "y" ], 
+                                width = self.line_size, arrow = arrow )
 
     # This method is for internal use only to facilitate a recursive tree traversal.
     # Call reroute_paths() instead.
@@ -733,20 +821,21 @@ class sm_layout( tk.Frame ):
                 
                 # Does this state have the changed_state as a destination?
                 #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
-                transitions = dict( state.get( HSM_RSVD_TRAN ) )
-                for transition_name, transition in transitions.items():
-                    path = transition.get( HSM_RSVD_PATH )
-                    if path is not None:
-                        dst_state_name = transition.get( HSM_RSVD_DEST )
-                        if dst_state_name:
-                            if dst_state_name == self.changed_state.name:
-                                dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
-                                #print( f"Need to change path from {state_name} to {self.changed_state.name}" )
-                                path = self.find_default_path( state, transition, dst_state )
-                                changed_model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
-                        else:
-                            print( f"Transition missing destination { transition_name }: { transition }" )
-                            assert( False )
+                if state.get( HSM_RSVD_TRAN ):
+                    transitions = dict( state.get( HSM_RSVD_TRAN ) )
+                    for transition_name, transition in transitions.items():
+                        path = transition.get( HSM_RSVD_PATH )
+                        if path is not None:
+                            dst_state_name = transition.get( HSM_RSVD_DEST )
+                            if dst_state_name:
+                                if dst_state_name == self.changed_state.name:
+                                    dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
+                                    #print( f"Need to change path from {state_name} to {self.changed_state.name}" )
+                                    path = self.find_default_path( state, transition, dst_state )
+                                    changed_model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
+                            else:
+                                print( f"Transition missing destination { transition_name }: { transition }" )
+                                assert( False )
             changed_model[ HSM_RSVD_STATES ][ state_name ] = state
             
         return changed_model
