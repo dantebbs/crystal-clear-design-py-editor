@@ -7,6 +7,7 @@ from tkinter import ttk
 from tkinter import *
 #from tkinter.messagebox import showinfo
 from PIL import Image, ImageTk
+import math
 import traceback
 import util
 # python -m pip install PyYAML
@@ -121,7 +122,7 @@ def line_intersection(line1, line2) -> dict:
     d = (det(*line1), det(*line2))
     x = det(d, xdiff) / div
     y = det(d, ydiff) / div
-    return {'x': x, 'y': y}    
+    return {'x': int( round( x ) ), 'y': int( round( y ) ) }    
 
 def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
     if model:
@@ -181,6 +182,72 @@ class sm_state_outline():
         y2 = self.top + self.hgt
         path = [ {'x': x1, 'y': y1}, {'x': x2, 'y': y1}, {'x': x2, 'y': y2}, {'x': x1, 'y': y2}, {'x': x1, 'y': y1} ]
         return path
+
+    # Returns a point at x, y coordinates.
+    def get_center( self ) -> dict:
+        x_ctr = self.lft + ( self.wid / 2 )
+        y_ctr = self.top + ( self.hgt / 2 )
+        return { 'x': int( round( x_ctr ) ), 'y': int( round( y_ctr ) ) }
+    
+    # Computes the vector from the center of the state to the given point
+    # in polar (magnitude, phase) format.
+    def get_vector( self, point: dict ) -> dict:
+        center = self.get_center()
+        x = point[ 'x' ] - center[ 'x' ]
+        y = point[ 'y' ] - center[ 'y' ]
+        # Since on-screen, y increases going downward, we'll change to
+        # standard cartesian by simply negating y here.
+        y = -y
+        mag = math.sqrt( ( x * x ) + ( y * y ) )
+        pha = math.atan2( y, x )
+        return { 'mag': mag, 'pha': pha * ( 180 / math.pi ) }
+
+    # Computes the vector from the center of the state to the closest point
+    # (perpendicular intersection) in polar (magnitude, phase) format.
+    def get_perpendicular( self, point_a: dict, point_b: dict ) -> dict:
+        center = self.get_center()
+
+        # First handle the horizontal and vertical special cases.
+        if point_a[ 'x' ] == point_b[ 'x' ]:
+            # Horizontal line.
+            x = 0
+            y = center[ 'y' ] - point_a[ 'y' ]
+            mag = math.sqrt( ( x * x ) + ( y * y ) )
+            pha = math.atan2( y, x )
+            return { 'mag': mag, 'pha': pha }
+        elif point_a[ 'y' ] == point_b[ 'y' ]:
+            # Vertical line.
+            x = center[ 'x' ] - point_a[ 'x' ]
+            y = 0
+            mag = math.sqrt( ( x * x ) + ( y * y ) )
+            pha = math.atan2( y, x )
+            return { 'mag': mag, 'pha': pha }
+        else:
+            x_line = point_b[ 'x' ] - point_a[ 'x' ]
+            y_line = point_b[ 'y' ] - point_a[ 'y' ]
+            m = y_line / x_line
+            b = point_a[ 'y' ] - ( m * point_a[ 'x' ] )
+            
+            # The perpendicular will have the negative of the reciprocal of the slope.
+            m_perp = -1 / m
+            # The y-intercept of the perpendicular can be computed using the center.
+            b_perp = center[ 'y' ] - ( m_perp * center[ 'x' ] )
+
+            # The system of two equations will have a solution at the
+            # intersection point.
+            x = ( b_perp - b ) / ( m - m_perp )
+            y = m * x + b
+
+        dx = x - center[ 'x' ]
+        dy = y - center[ 'y' ]
+        # Since on-screen, y increases going downward, we'll change to
+        # standard cartesian by simply negating y here.
+        dy = -dy
+        mag = math.sqrt( ( dx * dx ) + ( dy * dy ) )
+        pha = math.atan2( dy, dx )
+        vector = { 'mag': mag, 'pha': pha * ( 180 / math.pi ) }
+        #print( f"Perp: {dx:.2f},{dy:.2f} = vect {vector}" )
+        return vector
 
 # The Layout Widget for Start and Final States
 class sm_start_final_state_layout():
@@ -685,6 +752,7 @@ class sm_layout( tk.Frame ):
             # Check the path against each state machine.
             # Points A and B will be the path segment.
             A = path[ point_idx ]
+            clean_path.append( A )
             B = path[ point_idx + 1 ]
             for state_name, state in self.model.get( HSM_RSVD_STATES, {} ).items():
                 #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
@@ -694,17 +762,55 @@ class sm_layout( tk.Frame ):
                     # Points C and D will be an edge on the state outline.
                     C = state_outline[ state_corner_idx ]
                     D = state_outline[ state_corner_idx  + 1 ]
-                    #print( f"Checking {A},{B} vs {C},{D}" )
                     if do_lines_intersect( A, B, C, D ):
-                        intersect_point = line_intersection( ( (A['x'], A['y']), (B['x'], B['y']) ),
-                                    ( (C['x'], C['y']), (D['x'], D['y']) ) )
-                        if intersect_point:
-                            #print( f"Warn: path seg {A},{B} crosses state edge {C},{D}" )
-                            intersections.append( state_corner_idx )
-                            print( f"Warn: path seg {A},{B} crosses state edge #{state_corner_idx}={C},{D} at {intersect_point}" )
+                        #intersect_point = line_intersection( ( (A['x'], A['y']), (B['x'], B['y']) ),
+                        #            ( (C['x'], C['y']), (D['x'], D['y']) ) )
+                        #if intersect_point:
+                        #    #print( f"Warn: path seg {A},{B} crosses state edge {C},{D}" )
+                        #    intersections.append( state_corner_idx )
+                        #    #print( f"Warn: path seg {A},{B} crosses state edge #{state_corner_idx}={C},{D} at {intersect_point}" )
+                        #    print( f"Warn: path seg {point_idx} crosses state edge #{state_corner_idx}" )
+                        #    #vector = sm_state_outline( state ).get_vector( intersect_point )
+                        #    #print( f"Warn: vect {vector}" )
+                        # Once we know there is an intersection, quit analyzing the state
+                        # and add a point. Send it to the most appropriate corner.
+                        # Compute the perpendicular between the path line and the
+                        # center of the state.
+                        vector = sm_state_outline( state ).get_perpendicular( A, B )
+                        
+                        # Arbitrarily selecting E to be A or B depending on which is left-most.
+                        E = A
+                        F = B
+                        if B[ 'x' ] < A[ 'x' ]:
+                            E = B
+                            F = A
+                        # Push the line away based on quadrant.
+                        theta = vector[ 'pha' ]
+                        if theta >= -90 and theta < 90:
+                            # Cuts through the upper right corner (Quadrant I)
+                            # or through the lower right corner (Quadrant IV).
+                            clean_path.append( { 'x': F['x'], 'y': E['y'] } )
+                        else:
+                            # Cuts through the upper left corner (Quadrant II)
+                            # or through the lower left corner (Quadrant III).
+                            clean_path.append( { 'x': E['x'], 'y': F['y'] } )
 
-            clean_path.append( path[ point_idx ] )
-            
+                #if len( intersections ) == 2:
+                #    # There are 8 cases. 4 cases cut a corner off, and 4 cases cross
+                #    # through top and bottom (more left or more right?),
+                #    # or left and right (more top or more bottom?).
+                #    if ( ( intersections[ 0 ] == 0 ) and ( intersections[ 1 ] == 1 ) ) or
+                #        ( ( intersections[ 0 ] == 1 ) and ( intersections[ 1 ] == 0 ) ):
+                #        # Cuts through upper right corner.
+                #        clean_path.append( { 'x': B['x'], 'y': A['y'] } )
+                #    if ( ( intersections[ 0 ] == 1 ) and ( intersections[ 1 ] == 2 ) )
+                #        or ( ( intersections[ 0 ] == 2 ) and ( intersections[ 1 ] == 1 ) ):
+                #        # Cuts through lower right corner.
+                #        clean_path.append( { 'x': B['x'], 'y': A['y'] } )
+                #    else if ( intersections[ 0 ] == 2 ) and ( intersections[ 1 ] == 3 ):
+                #        # Cuts through lower left corner.
+                #        clean_path.append( { 'x': A['x'], 'y': B['y'] } )
+
         clean_path.append( path[ -1 ] )
         return clean_path
 
