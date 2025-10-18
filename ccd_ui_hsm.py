@@ -75,55 +75,6 @@ have_changes = False
 style = { "Border Weight": BRD_WEIGHT_THN }
 
 
-# These 3 helper functions check for / find the intersection of lines in a 2-D plane.
-def ccw( A: dict, B: dict, C: dict ) -> bool:
-    return ( C[ "y" ] - A[ "y" ] ) * ( B[ "x" ] - A[ "x" ] ) > ( B[ "y" ] - A[ "y" ] ) * ( C[ "x" ] - A[ "x" ] )
-# Return true if line segments AB and CD intersect
-def do_lines_intersect( A: dict, B: dict, C: dict, D: dict ) -> bool:
-    #print( f"li: A = {A}\n    B = {B}\n    C = {C}\n    D = {D}" )
-    return ccw( A, C, D ) != ccw( B, C, D ) and ccw( A, B, C ) != ccw( A, B, D )
-
-# Return the intersection point if line segments AB and CD intersect, otherwise returns None.
-# Formula:
-# Given lines (a1, a2) and (b1, b2) and the intersection p
-# (if the denominator is zero, the lines have no unique intersection),
-#     | | a1 a2 |  a1 - a2 |
-#     | | b1 b2 |  b1 - b2 |
-# p = ----------------------
-#      | a1 - a2  b1 - b2 |
-#def line_intersection( a1: dict, a2: dict, b1: dict, b2: dict ) -> dict:
-#    xdiff = (a1['x'] - a2['x'], b1['x'] - b2['x'])
-#    ydiff = (a1['y'] - a2['y'], b1['y'] - b2['y'])
-#
-#    def det( j, k ):
-#        return j[0] * k[1] - j[1] * k[0]
-#
-#    div = det( xdiff, ydiff )
-#    if div == 0:
-#        return None
-#
-#    #d = ( det( *line1 ), det( *line2 ) )
-#    d = ( det( ( a1['x'], a1['y'] ), ( a2['x'], a2['y'] ) ), det( ( b1['x'], b1['y'] ), ( b2['x'], b2['y'] ) ) )
-#    x = det( d, xdiff ) / div
-#    y = det( d, ydiff ) / div
-#    return {'x': x, 'y': y}
-    
-def line_intersection(line1, line2) -> dict:
-    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
-    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
-
-    def det(a, b):
-        return a[0] * b[1] - a[1] * b[0]
-
-    div = det(xdiff, ydiff)
-    if div == 0:
-       return None
-
-    d = (det(*line1), det(*line2))
-    x = det(d, xdiff) / div
-    y = det(d, ydiff) / div
-    return {'x': int( round( x ) ), 'y': int( round( y ) ) }    
-
 def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
     if model:
         # Push extents out as needed.
@@ -333,6 +284,8 @@ class sm_start_final_state_layout():
                 snap_x + self.w - 1, snap_y + self.h - 1,
                 outline = "#888888" )
 
+            # Update all associated transitions.
+            
             global have_changes
             have_changes = True
             
@@ -377,7 +330,8 @@ class sm_start_final_state_layout():
             self.parent.canvas.tag_bind( inner_circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
 
-# The State Layout Widget
+####################################################################################################
+# This class manages the look, style, painting and editing behavior of a single state widget.
 class sm_state_layout():
     def __init__( self, parent: object, state_name: str, model: dict ):
         assert( parent )
@@ -656,7 +610,8 @@ class sm_state_layout():
             self.x + rgt_ctr_x, self.y + self.line_size + self.titl_size, 
             width = self.line_size )
 
-# The State Machine Layout Widget
+####################################################################################################
+# This class manages the combined laying out of the workspace canvas, and state machine as a whole.
 class sm_layout( tk.Frame ):
     def __init__( self, *args, model: dict = None, **kwargs ):
         #print( f"frm = {self} = {self.winfo_width()}x{self.winfo_height()}+{self.winfo_x()}+{self.winfo_y()}" )
@@ -746,73 +701,53 @@ class sm_layout( tk.Frame ):
     # This method checks a path against the current positions of the states, and
     # if there are any transition line segments passing through another state,
     # new segments are added such that the path goes around.
-    def find_clean_path( self, path: list ) -> list:
-        clean_path = []
-        for point_idx in range( len( path ) - 1 ):
-            # Check the path against each state machine.
-            # Points A and B will be the path segment.
-            A = path[ point_idx ]
-            clean_path.append( A )
-            B = path[ point_idx + 1 ]
-            for state_name, state in self.model.get( HSM_RSVD_STATES, {} ).items():
-                #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
-                state_outline = sm_state_outline( state ).get_path()
-                intersections = []
-                for state_corner_idx in range( len( state_outline ) - 1 ):
-                    # Points C and D will be an edge on the state outline.
-                    C = state_outline[ state_corner_idx ]
-                    D = state_outline[ state_corner_idx  + 1 ]
-                    if do_lines_intersect( A, B, C, D ):
-                        #intersect_point = line_intersection( ( (A['x'], A['y']), (B['x'], B['y']) ),
-                        #            ( (C['x'], C['y']), (D['x'], D['y']) ) )
-                        #if intersect_point:
-                        #    #print( f"Warn: path seg {A},{B} crosses state edge {C},{D}" )
-                        #    intersections.append( state_corner_idx )
-                        #    #print( f"Warn: path seg {A},{B} crosses state edge #{state_corner_idx}={C},{D} at {intersect_point}" )
-                        #    print( f"Warn: path seg {point_idx} crosses state edge #{state_corner_idx}" )
-                        #    #vector = sm_state_outline( state ).get_vector( intersect_point )
-                        #    #print( f"Warn: vect {vector}" )
-                        # Once we know there is an intersection, quit analyzing the state
-                        # and add a point. Send it to the most appropriate corner.
-                        # Compute the perpendicular between the path line and the
-                        # center of the state.
-                        vector = sm_state_outline( state ).get_perpendicular( A, B )
-                        
-                        # Arbitrarily selecting E to be A or B depending on which is left-most.
-                        E = A
-                        F = B
-                        if B[ 'x' ] < A[ 'x' ]:
-                            E = B
-                            F = A
-                        # Push the line away based on quadrant.
-                        theta = vector[ 'pha' ]
-                        if theta >= -90 and theta < 90:
-                            # Cuts through the upper right corner (Quadrant I)
-                            # or through the lower right corner (Quadrant IV).
-                            clean_path.append( { 'x': F['x'], 'y': E['y'] } )
-                        else:
-                            # Cuts through the upper left corner (Quadrant II)
-                            # or through the lower left corner (Quadrant III).
-                            clean_path.append( { 'x': E['x'], 'y': F['y'] } )
-
-                #if len( intersections ) == 2:
-                #    # There are 8 cases. 4 cases cut a corner off, and 4 cases cross
-                #    # through top and bottom (more left or more right?),
-                #    # or left and right (more top or more bottom?).
-                #    if ( ( intersections[ 0 ] == 0 ) and ( intersections[ 1 ] == 1 ) ) or
-                #        ( ( intersections[ 0 ] == 1 ) and ( intersections[ 1 ] == 0 ) ):
-                #        # Cuts through upper right corner.
-                #        clean_path.append( { 'x': B['x'], 'y': A['y'] } )
-                #    if ( ( intersections[ 0 ] == 1 ) and ( intersections[ 1 ] == 2 ) )
-                #        or ( ( intersections[ 0 ] == 2 ) and ( intersections[ 1 ] == 1 ) ):
-                #        # Cuts through lower right corner.
-                #        clean_path.append( { 'x': B['x'], 'y': A['y'] } )
-                #    else if ( intersections[ 0 ] == 2 ) and ( intersections[ 1 ] == 3 ):
-                #        # Cuts through lower left corner.
-                #        clean_path.append( { 'x': A['x'], 'y': B['y'] } )
-
-        clean_path.append( path[ -1 ] )
-        return clean_path
+    # TODO: This is going to be 10 or 100 times more complex to get working than
+    # anticipated. New plan is to require manual placement for now.
+    #path = self.find_clean_path( path )
+    #def find_clean_path( self, path: list ) -> list:
+    #    clean_path = []
+    #    for point_idx in range( len( path ) - 1 ):
+    #        # Check the path against each state machine.
+    #        # Points A and B will be the path segment.
+    #        A = path[ point_idx ]
+    #        clean_path.append( A )
+    #        B = path[ point_idx + 1 ]
+    #        for state_name, state in self.model.get( HSM_RSVD_STATES, {} ).items():
+    #            #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
+    #            state_outline = sm_state_outline( state ).get_path()
+    #            intersections = []
+    #            for state_corner_idx in range( len( state_outline ) - 1 ):
+    #                # Points C and D will be an edge on the state outline.
+    #                C = state_outline[ state_corner_idx ]
+    #                D = state_outline[ state_corner_idx  + 1 ]
+    #                if do_lines_intersect( A, B, C, D ):
+    #                    # Once we know there is an intersection, quit analyzing the state
+    #                    # and add a point. Send it to the most appropriate corner.
+    #                    # Compute the perpendicular between the path line and the
+    #                    # center of the state.
+    #                    vector = sm_state_outline( state ).get_perpendicular( A, B )
+    #                    
+    #                    # Arbitrarily selecting E to be A or B depending on which is left-most.
+    #                    E = A
+    #                    F = B
+    #                    if B[ 'x' ] < A[ 'x' ]:
+    #                        E = B
+    #                        F = A
+    #                    # Push the line away based on quadrant.
+    #                    theta = vector[ 'pha' ]
+    #                    if theta >= -90 and theta < 90:
+    #                        # Cuts through the upper right corner (Quadrant I)
+    #                        # or through the lower right corner (Quadrant IV).
+    #                        clean_path.append( { 'x': F['x'], 'y': E['y'] } )
+    #                    else:
+    #                        # Cuts through the upper left corner (Quadrant II)
+    #                        # or through the lower left corner (Quadrant III).
+    #                        clean_path.append( { 'x': E['x'], 'y': F['y'] } )
+    #                        
+    #                    continue
+    #
+    #    clean_path.append( path[ -1 ] )
+    #    return clean_path
 
     # This just gives the simplest default path.
     #   Find x and y mid-points on each state.
@@ -860,7 +795,9 @@ class sm_layout( tk.Frame ):
                     
             # If any path segment intersects (passes through) a state, add a point such that
             # the path routes around it.
-            path = self.find_clean_path( path )
+            # TODO: This is going to be 10 or 100 times more complex to get working than
+            # anticipated. New plan is to require manual placement for now.
+            #path = self.find_clean_path( path )
 
         return path
 
@@ -920,6 +857,8 @@ class sm_layout( tk.Frame ):
         changed_model = dict( model )
         #print( json.dumps( model, indent = 2 ) )
 
+        # Take care of transitions exiting this state.
+        
         # Check the states at the top level of the model.
         states = model.get( HSM_RSVD_STATES, {} )
         if states:
@@ -934,14 +873,11 @@ class sm_layout( tk.Frame ):
                         if path is not None:
                             dst_state_name = transition.get( HSM_RSVD_DEST )
                             if dst_state_name:
-                                if dst_state_name == self.changed_state.name:
-                                    dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
-                                    #print( f"Need to change path from {state_name} to {self.changed_state.name}" )
+                                dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
+                                if self.changed_state.name == state_name or dst_state_name == self.changed_state.name:
+                                    print( f"Updating path from {state_name} to {dst_state_name}" )
                                     path = self.find_default_path( state, transition, dst_state )
                                     changed_model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
-                            else:
-                                print( f"Transition missing destination { transition_name }: { transition }" )
-                                assert( False )
             changed_model[ HSM_RSVD_STATES ][ state_name ] = state
             
         return changed_model

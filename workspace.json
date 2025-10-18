@@ -1,9 +1,9 @@
 {
     "app_window": {
-        "left": 465,
-        "top": 42,
-        "width": 1229,
-        "height": 787
+        "left": 1916,
+        "top": 1,
+        "width": 760,
+        "height": 801
     },
     "mru_models": [
         "C:/dev/crystal-clear-design-py-editor/hsm_model.json",

@@ -18,6 +18,7 @@ except ImportError:
     print( f"Run:\npython -m pip install hierarchical_state_machine\n    ... then try again." )
     quit()
 
+callbacks_module_ref = sys.modules[__name__]
 
 HSM_BLANK_TEMPLATE = """
 {
