@@ -14,7 +14,10 @@ import util
 #import yaml
 
 import workspace_settings
-import hierarchical_state_machine
+#import hierarchical_state_machine
+import ccd_model
+from ccd_model import curr_model
+import ccd_ui_select
 
 try:
     import hierarchical_state_machine as hsm
@@ -23,107 +26,22 @@ except ImportError:
     print( f"Run:\npython -m pip install hierarchical_state_machine\n    ... then try again." )
     quit()
 
+import hsm_defaults
 
-
-BRD_WEIGHT_THN = 0
-BRD_WEIGHT_MED = 1
-BRD_WEIGHT_THK = 2
-
-# Use even numbers for these sizes to avoid misalignments.
-THN_LINE_SIZE = 2
-THN_CRNR_SIZE = 10
-THN_TITL_SIZE = 16
-
-MED_LINE_SIZE = 4
-MED_CRNR_SIZE = 12
-MED_TITL_SIZE = 18
-
-THK_LINE_SIZE = 8
-THK_CRNR_SIZE = 14
-THK_TITL_SIZE = 20
-
-MIN_SM_WID = 60
-MIN_SM_HGT = 50
-
-DEF_STATE_LFT = 200
-DEF_STATE_TOP = 100
-DEF_STATE_WID = 120
-DEF_STATE_HGT = 90
-
-# Reserved Words
-HSM_RSVD_STATES = "states"
-HSM_RSVD_LYOUT = "layout"
-HSM_RSVD_START = "start"
-HSM_RSVD_FINAL = "final"
-HSM_RSVD_AUTO  = "auto"
-HSM_RSVD_TRAN  = "tran"
-HSM_RSVD_DEST  = "dest"
-HSM_RSVD_PATH  = "path"
-
-# Note: This value must be even and > 0.
-# Lines are routed on multiples of GRID_PIX / 2, and the corners of states are
-# constrained to multiples of GRID_PIX.
-GRID_PIX = 10
 
 # Get the name of this particular code module.
 this_module = sys.modules[__name__]
 
-# A flag showing that one or more changes has been made, and the model needs
-# to be saved to file again.
-have_changes = False
-
-style = { "Border Weight": BRD_WEIGHT_THN }
-
-
-def find_canvas_rect( model: object, min_w: int, min_h: int ) -> dict:
-    if model:
-        # Push extents out as needed.
-        ( min_x, min_y ) = ( 0, 0 )
-        ( max_x, max_y ) = ( min_w, min_h )
-        states = model.get( HSM_RSVD_STATES )
-        for state_name, state in states.items():
-            layout = state.get( HSM_RSVD_LYOUT )
-            if layout:
-                state_x = layout.get( "x", DEF_STATE_LFT )
-                if ( min_x > state_x ):
-                    min_x = state_x
-                state_y = layout.get( "y", DEF_STATE_TOP )
-                if ( min_y > state_y ):
-                    min_y = state_y
-                state_w = layout.get( "w", DEF_STATE_WID )
-                if ( max_x < state_x + state_w ):
-                    max_x = state_x + state_w
-                state_h = layout.get( "h", DEF_STATE_HGT )
-                if ( max_y < state_y + state_h ):
-                    max_y = state_y + state_h
-
-            # TODO: Add recursion to account for sub-states.
-            
-            # TODO: Add transition paths extent expansion as well.
-        
-    return { "x": min_x, "y": min_y, "w": max_x - min_x, "h": max_y - min_y }
 
 class sm_state_outline():
     def __init__( self, state: dict ):
-        self.lft = DEF_STATE_LFT
-        self.top = DEF_STATE_TOP
-        self.wid = DEF_STATE_WID
-        self.hgt = DEF_STATE_HGT
-
-        if state:
-            layout = state.get( HSM_RSVD_LYOUT )
-            if layout:
-                if ( 'x' in layout.keys() ):
-                    self.lft = layout[ 'x' ]
-                if ( 'y' in layout.keys() ):
-                    self.top = layout[ 'y' ]
-                if ( 'w' in layout.keys() ):
-                    self.wid = layout[ 'w' ]
-                if ( 'h' in layout.keys() ):
-                    self.hgt = layout[ 'h' ]
-
+        layout = ccd_model.get_state_layout( state )
+        self.lft = layout[ hsm_defaults.RSVD_LFT ]
+        self.top = layout[ hsm_defaults.RSVD_TOP ]
+        self.wid = layout[ hsm_defaults.RSVD_WID ]
+        self.hgt = layout[ hsm_defaults.RSVD_HGT ]
         #print( f"{self.lft},{self.top}-{self.wid}x{self.hgt}." )
-
+        
     def get_path( self ) -> list:
         # Upper Left Corner
         x1 = self.lft
@@ -202,52 +120,27 @@ class sm_state_outline():
 
 # The Layout Widget for Start and Final States
 class sm_start_final_state_layout():
-    def __init__( self, parent: object, state_name: str, model: dict ):
-        self.initialized = False
+    def __init__( self, parent: object, state_name: str, model: ccd_model ):
         assert( parent )
         assert( type( parent ) == sm_layout )
         self.parent = parent
         assert( state_name )
-        assert( state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL )
+        assert( state_name == hsm_defaults.RSVD_START or state_name == hsm_defaults.RSVD_FINAL )
         self.name = state_name
         assert( model )
         self.model = model
 
         #print( f"start/final model={self.model}." )
-        # Set border, which for the start symbol, also sets the width and height.
-        self.set_border_thickness( style.get( "Border Weight", BRD_WEIGHT_THN ) )
 
-        # Either read the layout from the model or provide a default one.
-        global have_changes
-
-        layout = model.get( HSM_RSVD_LYOUT )
-        if layout is None:
-            layout = { "x": DEF_STATE_LFT, "y": DEF_STATE_TOP }
-            have_changes = True
-        
-        self.x = layout.get( "x" )
-        if self.x is None:
-            self.x = DEF_STATE_LFT
-            have_changes = True
-        self.y = layout.get( "y" )
-        if self.y is None:
-            self.y = DEF_STATE_TOP
-            have_changes = True
-
-        self.initialized = True
-
-    def set_border_thickness( self, weight: int ):
-        if ( weight == BRD_WEIGHT_THN ):
-            self.crnr_size = THN_CRNR_SIZE
-        if ( weight == BRD_WEIGHT_MED ):
-            self.crnr_size = MED_CRNR_SIZE
-        if ( weight == BRD_WEIGHT_THK ):
-            self.crnr_size = THK_CRNR_SIZE
-
+        layout = ccd_model.get_state_layout( self.model, default_outline = hsm_defaults.SS_OUTLINE_DEF )
+        self.x = layout.get( hsm_defaults.RSVD_LFT )
+        self.y = layout.get( hsm_defaults.RSVD_TOP )
+        self.line_size = hsm_defaults.THN_LINE_SIZE
+        self.crnr_size = hsm_defaults.THN_CRNR_SIZE
+        self.titl_size = hsm_defaults.THN_TITL_SIZE
         self.w = self.crnr_size * 2
         self.h = self.crnr_size * 2
-        self.model[ HSM_RSVD_LYOUT ][ "w" ] = self.w
-        self.model[ HSM_RSVD_LYOUT ][ "h" ] = self.h
+        ccd_model.set_state_size( self, wid = self.w, hgt = self.h )
 
     def drag_start( self, event ):
         self.drag_start_x = event.x
@@ -264,14 +157,14 @@ class sm_start_final_state_layout():
     def drag_motion( self, event ):
         new_x = self.x + ( event.x - self.drag_start_x )
         # Round it up if closer to next grid point.
-        snap_x = new_x + ( GRID_PIX / 2 )
-        snap_x = int( snap_x / GRID_PIX )
-        snap_x *= GRID_PIX
+        snap_x = new_x + ( hsm_defaults.GRID_PIX / 2 )
+        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
+        snap_x *= hsm_defaults.GRID_PIX
         
         new_y = self.y + ( event.y - self.drag_start_y )
-        snap_y = new_y + ( GRID_PIX / 2 )
-        snap_y = int( snap_y / GRID_PIX )
-        snap_y *= GRID_PIX
+        snap_y = new_y + ( hsm_defaults.GRID_PIX / 2 )
+        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
+        snap_y *= hsm_defaults.GRID_PIX
         
         if snap_x != self.drag_x or snap_y != self.drag_y:
             self.parent.canvas.delete( self.prev_outline )
@@ -295,8 +188,8 @@ class sm_start_final_state_layout():
         if self.x != self.drag_x or self.y != self.drag_y:
             self.x = self.drag_x
             self.y = self.drag_y
-            self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
-            self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
+            self.model[ RSVD_LYOUT ][ "x" ] = self.x
+            self.model[ RSVD_LYOUT ][ "y" ] = self.y
 
             #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
             self.parent.reroute_paths( self )
@@ -318,7 +211,7 @@ class sm_start_final_state_layout():
         self.parent.canvas.tag_bind( circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
         # Add a white circle in the center if this is a final state.
-        if self.name == HSM_RSVD_FINAL:
+        if self.name == hsm_defaults.RSVD_FINAL:
             radius = self.crnr_size / 2
             inner_circle = self.parent.canvas.create_oval(
                 self.x + radius,             self.y + radius,
@@ -342,12 +235,15 @@ class sm_state_layout():
         assert( model )
         self.model = model
 
-        self.set_border_thickness( style.get( "Border Weight", BRD_WEIGHT_THN ) )
+        self.line_size = hsm_defaults.THN_LINE_SIZE
+        self.crnr_size = hsm_defaults.THN_CRNR_SIZE
+        self.titl_size = hsm_defaults.THN_TITL_SIZE
+
 
         # Either read the layout from the model or provide a default one.
         global have_changes
 
-        layout = model.get( HSM_RSVD_LYOUT )
+        layout = model.get( hsm_defaults.RSVD_LYOUT )
         if layout is None:
             layout = { "x": DEF_STATE_LFT, "y": DEF_STATE_TOP, "w": DEF_STATE_WID, "h": DEF_STATE_HGT }
             have_changes = True
@@ -372,20 +268,6 @@ class sm_state_layout():
             self.h = DEF_STATE_HGT
             have_changes = True
 
-    def set_border_thickness( self, weight: int ):
-        if ( weight == BRD_WEIGHT_THN ):
-            self.line_size = THN_LINE_SIZE
-            self.crnr_size = THN_CRNR_SIZE
-            self.titl_size = THN_TITL_SIZE
-        if ( weight == BRD_WEIGHT_MED ):
-            self.line_size = MED_LINE_SIZE
-            self.crnr_size = MED_CRNR_SIZE
-            self.titl_size = MED_TITL_SIZE
-        if ( weight == BRD_WEIGHT_THK ):
-            self.line_size = THK_LINE_SIZE
-            self.crnr_size = THK_CRNR_SIZE
-            self.titl_size = THK_TITL_SIZE
-
     def size_drag_start( self, event ):
         self.drag_start_x = event.x
         self.drag_start_y = event.y
@@ -408,14 +290,14 @@ class sm_state_layout():
     def drag_motion( self, event ):
         new_x = self.x + ( event.x - self.drag_start_x )
         # Round it up if closer to next grid point.
-        snap_x = new_x + ( GRID_PIX / 2 )
-        snap_x = int( snap_x / GRID_PIX )
-        snap_x *= GRID_PIX
+        snap_x = new_x + ( hsm_defaults.GRID_PIX / 2 )
+        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
+        snap_x *= hsm_defaults.GRID_PIX
         
         new_y = self.y + ( event.y - self.drag_start_y )
-        snap_y = new_y + ( GRID_PIX / 2 )
-        snap_y = int( snap_y / GRID_PIX )
-        snap_y *= GRID_PIX
+        snap_y = new_y + ( hsm_defaults.GRID_PIX / 2 )
+        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
+        snap_y *= hsm_defaults.GRID_PIX
         
         if snap_x != self.drag_x or snap_y != self.drag_y:
             self.parent.canvas.delete( self.prev_outline )
@@ -437,8 +319,7 @@ class sm_state_layout():
         if self.x != self.drag_x or self.y != self.drag_y:
             self.x = self.drag_x
             self.y = self.drag_y
-            self.model[ HSM_RSVD_LYOUT ][ "x" ] = self.x
-            self.model[ HSM_RSVD_LYOUT ][ "y" ] = self.y
+            ccd_model.set_position( self.model, self.x, self.y )
 
             #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
             self.parent.reroute_paths( self )
@@ -451,17 +332,17 @@ class sm_state_layout():
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
         # Round it up if closer to next grid point.
-        snap_x = temp_wid + ( GRID_PIX / 2 )
-        snap_x = int( snap_x / GRID_PIX )
-        temp_wid = snap_x * GRID_PIX
+        snap_x = temp_wid + ( hsm_defaults.GRID_PIX / 2 )
+        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
+        temp_wid = snap_x * hsm_defaults.GRID_PIX
         self.prev_wid = temp_wid
             
         temp_hgt = event.y - self.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
-        snap_y = temp_hgt + ( GRID_PIX / 2 )
-        snap_y = int( snap_y / GRID_PIX )
-        temp_hgt = snap_y * GRID_PIX
+        snap_y = temp_hgt + ( hsm_defaults.GRID_PIX / 2 )
+        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
+        temp_hgt = snap_y * hsm_defaults.GRID_PIX
         self.prev_hgt = temp_hgt
 
         #print( f"sm prev_outline {self.x},{self.y},{self.x + temp_wid},{self.y + temp_hgt}" )
@@ -475,22 +356,22 @@ class sm_state_layout():
         if temp_wid < MIN_SM_WID:
             temp_wid = MIN_SM_WID
         # Round it up if closer to next grid point.
-        snap_x = temp_wid + ( GRID_PIX / 2 )
-        snap_x = int( snap_x / GRID_PIX )
-        temp_wid = snap_x * GRID_PIX
+        snap_x = temp_wid + ( hsm_defaults.GRID_PIX / 2 )
+        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
+        temp_wid = snap_x * hsm_defaults.GRID_PIX
 
         temp_hgt = event.y - self.y + self.offs_wid
         if temp_hgt < MIN_SM_HGT:
             temp_hgt = MIN_SM_HGT
-        snap_y = temp_hgt + ( GRID_PIX / 2 )
-        snap_y = int( snap_y / GRID_PIX )
-        temp_hgt = snap_y * GRID_PIX
+        snap_y = temp_hgt + ( hsm_defaults.GRID_PIX / 2 )
+        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
+        temp_hgt = snap_y * hsm_defaults.GRID_PIX
 
         if self.w != temp_wid or self.h != temp_hgt:
             self.w = temp_wid
             self.h = temp_hgt
-            self.model[ HSM_RSVD_LYOUT ][ "w" ] = self.w
-            self.model[ HSM_RSVD_LYOUT ][ "h" ] = self.h
+            self.model[ RSVD_LYOUT ][ "w" ] = self.w
+            self.model[ RSVD_LYOUT ][ "h" ] = self.h
             #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
             
             self.parent.reroute_paths( self )
@@ -610,10 +491,11 @@ class sm_state_layout():
             self.x + rgt_ctr_x, self.y + self.line_size + self.titl_size, 
             width = self.line_size )
 
+
 ####################################################################################################
 # This class manages the combined laying out of the workspace canvas, and state machine as a whole.
 class sm_layout( tk.Frame ):
-    def __init__( self, *args, model: dict = None, **kwargs ):
+    def __init__( self, *args, **kwargs ):
         #print( f"frm = {self} = {self.winfo_width()}x{self.winfo_height()}+{self.winfo_x()}+{self.winfo_y()}" )
         super( sm_layout, self ).__init__( *args, bd = 0, highlightthickness = 0, relief = 'ridge', **kwargs )
         self.grid( row = 0, column = 0, padx = 0, pady = 0 )
@@ -624,79 +506,83 @@ class sm_layout( tk.Frame ):
         # Start with the frame size and then expand if needed by the model.
         canv_w = self.winfo_width()
         canv_h = self.winfo_height()
-        canv_geom = find_canvas_rect( model, min_w = canv_w, min_h = canv_h )
-        view_str = f"{canv_geom[ "x" ]} {canv_geom[ "y" ]} {canv_geom[ "x" ] + canv_w} {canv_geom[ "y" ] + canv_h}"
+        #print( f"Inp model:" )
+        #print( json.dumps( curr_model, indent = 2 ) )
+        ( canv_x1, canv_y1, canv_x2, canv_y2 ) = ccd_model.find_paint_rect( curr_model, min_x = 0, min_y = 0, max_x = canv_w, max_y = canv_h )
+        view_str = f"{canv_x1} {canv_y1} {canv_x2} {canv_y2}"
         #print( f"F Wrk Frame = {self.winfo_width()}x{self.winfo_height()}" )
-        self.canvas = tk.Canvas( master = self, width = canv_geom[ "w" ], height = canv_geom[ "h" ], bd = 0, highlightthickness = 0, relief = 'ridge', scrollregion = view_str )
+        self.canvas = tk.Canvas( master = self, width = canv_x2 - canv_x1, height = canv_y2 - canv_y1, bd = 0, highlightthickness = 0, relief = 'ridge', scrollregion = view_str )
         self.canvas.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.canvas.grid_propagate( False )
         self.canvas.update()
         #print( f"C Wrk Frame = {self.canvas.winfo_width()}x{self.canvas.winfo_height()}" )
-        curr_border_weight = style.get( "Border Weight", BRD_WEIGHT_THN )
-        self.set_border_thickness( curr_border_weight )
+        #self.set_border_thickness( workspace_settings.workspace_settings.get_border_thickness() )
+        self.line_size = hsm_defaults.THN_LINE_SIZE
+        self.crnr_size = hsm_defaults.THN_CRNR_SIZE
 
-        #print( f"Inp model:" )
-        #print( json.dumps( model, indent = 2 ) )
-        # Since we can't alter a dictionary during iteration, we create a new copy, and use that subsequently.
-        self.model = dict( model )
+        self.model = ccd_model.curr_model
+        # Set up a selection resolver to cover the working frame.
+        self.selector = ccd_ui_select.ccd_ui_select( working_frame = self, working_model = self.model )
 
         # Resolve any layout issues for each state.
         self.state_widgets = []
-        states = model.get( HSM_RSVD_STATES, {} )
-        for state_name, state in states.items():
-            state_outline = sm_state_outline( state )
-            if state == {}:
-                # State had no layout info, use a default.
-                state = {'layout': {'x': state_outline.lft, 'y': state_outline.top, 'w': state_outline.wid, 'h': state_outline.hgt }}
-            #print( f"state {state_name} = {json.dumps( state, indent = 2 )}." )
-            self.model[ HSM_RSVD_STATES ][ state_name ] = state
-            #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
+        sub_states = ccd_model.get_sub_states( self.model )
+        if sub_states:
+            for state_name, state in sub_states.items():
+                state_outline = sm_state_outline( state )
+                #if state == {}:
+                #    # State had no layout info, use a default.
+                #    state = {'layout': {'x': state_outline.lft, 'y': state_outline.top, 'w': state_outline.wid, 'h': state_outline.hgt }}
+                #print( f"state {state_name} = {json.dumps( state, indent = 2 )}." )
+                self.model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
+                #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
 
-            if state_name == HSM_RSVD_START or state_name == HSM_RSVD_FINAL:
-                new_widget = sm_start_final_state_layout( self, state_name, state )
-                self.state_widgets.append( new_widget )
-            else:
-                new_widget = sm_state_layout( self, state_name, state )
-                self.state_widgets.append( new_widget )
+                if state_name == hsm_defaults.RSVD_START or state_name == hsm_defaults.RSVD_FINAL:
+                    new_widget = sm_start_final_state_layout( self, state_name, state )
+                    self.state_widgets.append( new_widget )
+                else:
+                    new_widget = sm_state_layout( self, state_name, state )
+                    self.state_widgets.append( new_widget )
 
-            # Ensure we have at least a default layout for each transition.
-            #print( f" {state_name} - {state}" )
-            if state.get( HSM_RSVD_TRAN ):
-                transitions = dict( state.get( HSM_RSVD_TRAN ) )
-                #print( f"  tr = { transitions }" )
-                for transition_name, transition in transitions.items():
-                    path = transition.get( HSM_RSVD_PATH )
-                    if path is None:
-                        #print( f"1. {state_name} - {state}" )
-                        dst_state_name = transition.get( HSM_RSVD_DEST )
-                        if dst_state_name:
-                            dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
-                            path = self.find_default_path( state, transition, dst_state )
-                            self.model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
-                            global have_changes
-                            have_changes = True
-                        else:
-                            print( f"Transition missing destination { transition_name }: { transition }" )
-                            assert( False )
-        #print( f"Out model:" )
-        #print( json.dumps( self.model, indent = 2 ) )
+                # Ensure we have at least a default layout for each transition.
+                #print( f" {state_name} - {state}" )
+                transitions = ccd_model.get_transitions( state )
+                if transitions:
+                    #print( f"  tr = { transitions }" )
+                    for transition_name, transition in transitions.items():
+                        path = transition.get( hsm_defaults.RSVD_PATH )
+                        if path is None:
+                            #print( f"1. {state_name} - {state}" )
+                            dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
+                            if dst_state_name:
+                                dst_state = self.model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
+                                path = self.find_default_path( state, transition, dst_state )
+                                self.model[ RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
+                                global have_changes
+                                have_changes = True
+                            else:
+                                print( f"Transition missing destination { transition_name }: { transition }" )
+                                assert( False )
+            #print( f"Out model:" )
+            #print( json.dumps( self.model, indent = 2 ) )
 
-    def set_border_thickness( self, weight: int ):
-        if hasattr( self, "state_widgets" ):
-            # Update each of the state widgets.
-            for widget in self.state_widgets:
-                widget.set_border_thickness( weight )
-
-        # Update the transition lines.
-        if ( weight == BRD_WEIGHT_THN ):
-            self.line_size = THN_LINE_SIZE
-            self.crnr_size = THN_CRNR_SIZE
-        if ( weight == BRD_WEIGHT_MED ):
-            self.line_size = MED_LINE_SIZE
-            self.crnr_size = MED_CRNR_SIZE
-        if ( weight == BRD_WEIGHT_THK ):
-            self.line_size = THK_LINE_SIZE
-            self.crnr_size = THK_CRNR_SIZE
+    ## Might add a border thickness feature later.
+    #def set_border_thickness( self, weight: int ):
+    #    if hasattr( self, "state_widgets" ):
+    #        # Update each of the state widgets.
+    #        for widget in self.state_widgets:
+    #            widget.set_border_thickness( weight )
+    #
+    #    # Update the transition lines.
+    #    if ( weight == workspace_settings.BRD_WEIGHT_THN ):
+    #        self.line_size = hsm_defaults.THN_LINE_SIZE
+    #        self.crnr_size = hsm_defaults.THN_CRNR_SIZE
+    #    if ( weight == workspace_settings.BRD_WEIGHT_MED ):
+    #        self.line_size = hsm_defaults.MED_LINE_SIZE
+    #        self.crnr_size = hsm_defaults.MED_CRNR_SIZE
+    #    if ( weight == workspace_settings.BRD_WEIGHT_THK ):
+    #        self.line_size = hsm_defaults.THK_LINE_SIZE
+    #        self.crnr_size = hsm_defaults.THK_CRNR_SIZE
 
     # This method checks a path against the current positions of the states, and
     # if there are any transition line segments passing through another state,
@@ -712,7 +598,7 @@ class sm_layout( tk.Frame ):
     #        A = path[ point_idx ]
     #        clean_path.append( A )
     #        B = path[ point_idx + 1 ]
-    #        for state_name, state in self.model.get( HSM_RSVD_STATES, {} ).items():
+    #        for state_name, state in self.model.get( RSVD_STATES, {} ).items():
     #            #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
     #            state_outline = sm_state_outline( state ).get_path()
     #            intersections = []
@@ -748,6 +634,20 @@ class sm_layout( tk.Frame ):
     #
     #    clean_path.append( path[ -1 ] )
     #    return clean_path
+
+    def get_trans_list( self ) -> list:
+        transition_list = []
+        # Start at the top level of the model.
+        states = self.model.get( hsm_defaults.RSVD_STATES, {} )
+        if states:
+            for state_name, state in states.items():
+                if state.get( hsm_defaults.RSVD_TRAN ):
+                    transitions = dict( state.get( hsm_defaults.RSVD_TRAN ) )
+                    for transition_name, transition in transitions.items():
+                        transition_list.append( transition )
+                        #path = transition.get( RSVD_PATH )
+                        #if path is not None:
+        return transition_list
 
     # This just gives the simplest default path.
     #   Find x and y mid-points on each state.
@@ -823,21 +723,21 @@ class sm_layout( tk.Frame ):
         
             # Then add the transitions.
             #print( f"state.model={state.model}" )
-            if state.name == HSM_RSVD_FINAL:
+            if state.name == hsm_defaults.RSVD_FINAL:
                 # The final state can have no transitions out of it.
-                assert( HSM_RSVD_TRAN not in state.model )
+                assert( hsm_defaults.RSVD_TRAN not in state.model )
             else:
                 # General case.
                 # Get the transition info.
-                transitions = state.model.get( HSM_RSVD_TRAN )
+                transitions = state.model.get( hsm_defaults.RSVD_TRAN )
                 if transitions:
                     for transition_name, transition in transitions.items():
-                        if state.name == HSM_RSVD_START:
+                        if state.name == hsm_defaults.RSVD_START:
                             assert( len( transitions ) == 1 )
-                            assert( HSM_RSVD_AUTO in transitions )
+                            assert( hsm_defaults.RSVD_AUTO in transitions )
                         #print( f"tr paint = {transition}" )
                         # See if a path is provided.
-                        path = transition.get( HSM_RSVD_PATH )
+                        path = transition.get( hsm_defaults.RSVD_PATH )
                         for point_idx in range( len( path ) - 1 ):
                             src_pt = path[ point_idx + 0 ]
                             dst_pt = path[ point_idx + 1 ]
@@ -857,33 +757,31 @@ class sm_layout( tk.Frame ):
         changed_model = dict( model )
         #print( json.dumps( model, indent = 2 ) )
 
-        # Take care of transitions exiting this state.
-        
-        # Check the states at the top level of the model.
-        states = model.get( HSM_RSVD_STATES, {} )
+        # Start at the top level of the model.
+        states = model.get( hsm_defaults.RSVD_STATES, {} )
         if states:
             for state_name, state in states.items():
                 
                 # Does this state have the changed_state as a destination?
                 #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
-                if state.get( HSM_RSVD_TRAN ):
-                    transitions = dict( state.get( HSM_RSVD_TRAN ) )
+                if state.get( hsm_defaults.RSVD_TRAN ):
+                    transitions = dict( state.get( hsm_defaults.RSVD_TRAN ) )
                     for transition_name, transition in transitions.items():
-                        path = transition.get( HSM_RSVD_PATH )
+                        path = transition.get( hsm_defaults.RSVD_PATH )
                         if path is not None:
-                            dst_state_name = transition.get( HSM_RSVD_DEST )
+                            dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
                             if dst_state_name:
-                                dst_state = model[ HSM_RSVD_STATES ][ dst_state_name ]
+                                dst_state = model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
                                 if self.changed_state.name == state_name or dst_state_name == self.changed_state.name:
-                                    print( f"Updating path from {state_name} to {dst_state_name}" )
+                                    #print( f"Updating path from {state_name} to {dst_state_name}" )
                                     path = self.find_default_path( state, transition, dst_state )
-                                    changed_model[ HSM_RSVD_STATES ][ state_name ][ HSM_RSVD_TRAN ][ transition_name ][ HSM_RSVD_PATH ] = path
-            changed_model[ HSM_RSVD_STATES ][ state_name ] = state
+                                    changed_model[ hsm_defaults.RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
+            changed_model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
             
         return changed_model
 
     def reroute_paths( self, changed_state: object ) -> dict:
-        assert( type( changed_state ) == sm_state_layout or type( changed_state ) == sm_start_final_state_layout )
+        assert( type( changed_state ) is sm_state_layout or type( changed_state ) is sm_start_final_state_layout )
         self.changed_state = changed_state
         #print( f"changed_state = '{self.changed_state.name}'" )
         #print( json.dumps( self.model, indent = 2 ) )

@@ -37,3 +37,26 @@ def line_intersection(line1, line2) -> dict:
     y = det(d, ydiff) / div
     return {'x': int( round( x ) ), 'y': int( round( y ) ) }    
 
+def point_to_line_dist( point, line ) -> int:
+    dist = int( 0 )
+    
+    # From Wikipedia https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+    # Given a non-vertical and non-horizontal line of the form P1 = (x1,y1) to P2 = (x2,y2) and point (x0, y0):
+    #                               | ( y2 - y1 ) x0 - ( x2 - x1 ) y0 + x2 y1 = y2 x1 |
+    #  dist( P1, P2, ( x0, y0 ) ) = ---------------------------------------------------
+    #                                      sqrt( ( y2 - y1 )^2 + ( x2 - x1 )^2 )
+    # Note: If needed, there is available an optimization using the area of the triangle.
+    ( x0, y1, x1, y1, x2, y2 ) = ( point[0], point[1], line[0][0], line[0][1], line[1][0], line[1][1] )
+    ( x_dist, y_dist ) = ( x2 - x1, y2 - y1 )
+    if ( y_dist == 0 ):
+        # Special case of a horizontal line.
+        dist = int( x_dist )
+    elif ( x_dist == 0 ):
+        # Special case of a vertical line.
+        dist = int( y_dist )
+    else:
+        numerator = abs( ( y_dist * x0 ) - ( x_dist * x1 ) + ( x2 * y1 ) - ( y2 * x1 ) )
+        denominator = sqrt( ( y_dist * y_dist ) + ( x_dist * x_dist ) )
+        dist = int( round( numerator / denominator ) )
+    
+    return dist
