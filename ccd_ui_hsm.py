@@ -16,7 +16,6 @@ import util
 import workspace_settings
 #import hierarchical_state_machine
 import ccd_model
-from ccd_model import curr_model
 import ccd_ui_select
 
 try:
@@ -33,29 +32,46 @@ import hsm_defaults
 this_module = sys.modules[__name__]
 
 
+####################################################################################################
+# Note: Two variable naming conventions in this module are:
+#   (sub_)state = a reference to a dictionary object within the ccd_model.curr_model object.
+#   (sub_)state_path = a list of strings (type ccd_state_path) that lead down the hierarchy tree.
+
+
+####################################################################################################
+# Returns a point as an ( x, y ) tuple, where the integers are guaranteed to be moved to the nearest
+# point on the regular grid with horizontal and vertical spacing of GRID_PIX.
+def snap_to_grid( x: int, y: int ) -> tuple:
+    assert( isinstance( x, int ) )
+    assert( isinstance( y, int ) )
+    
+    # Round it up if closer to next grid point.
+    rounded_x = x + ( hsm_defaults.GRID_PIX / 2 )
+    grids_x = int( rounded_x / hsm_defaults.GRID_PIX )
+    snapped_x = grids_x * hsm_defaults.GRID_PIX
+    
+    rounded_y = y + ( hsm_defaults.GRID_PIX / 2 )
+    grids_y = int( rounded_y / hsm_defaults.GRID_PIX )
+    snapped_y = grids_y * hsm_defaults.GRID_PIX
+    
+    return ( snapped_x, snapped_y )
+    
+
+####################################################################################################
 class sm_state_outline():
     def __init__( self, state: dict ):
-        layout = ccd_model.get_state_layout( state )
-        self.lft = layout[ hsm_defaults.RSVD_LFT ]
-        self.top = layout[ hsm_defaults.RSVD_TOP ]
-        self.wid = layout[ hsm_defaults.RSVD_WID ]
-        self.hgt = layout[ hsm_defaults.RSVD_HGT ]
-        #print( f"{self.lft},{self.top}-{self.wid}x{self.hgt}." )
+        self.state = state
         
     def get_path( self ) -> list:
-        # Upper Left Corner
-        x1 = self.lft
-        y1 = self.top
-        # Lower Right Corner
-        x2 = self.lft + self.wid
-        y2 = self.top + self.hgt
+        ( x1, y1, x2, y2 ) = ccd_model.curr_model.get_state_layout( self.state )
         path = [ {'x': x1, 'y': y1}, {'x': x2, 'y': y1}, {'x': x2, 'y': y2}, {'x': x1, 'y': y2}, {'x': x1, 'y': y1} ]
         return path
 
     # Returns a point at x, y coordinates.
     def get_center( self ) -> dict:
-        x_ctr = self.lft + ( self.wid / 2 )
-        y_ctr = self.top + ( self.hgt / 2 )
+        ( x1, y1, x2, y2 ) = ccd_model.curr_model.get_state_layout( self.state )
+        x_ctr = ( x1 + x2 ) / 2
+        y_ctr = ( y1 + y2 ) / 2
         return { 'x': int( round( x_ctr ) ), 'y': int( round( y_ctr ) ) }
     
     # Computes the vector from the center of the state to the given point
@@ -118,110 +134,6 @@ class sm_state_outline():
         #print( f"Perp: {dx:.2f},{dy:.2f} = vect {vector}" )
         return vector
 
-# The Layout Widget for Start and Final States
-class sm_start_final_state_layout():
-    def __init__( self, parent: object, state_name: str, model: ccd_model ):
-        assert( parent )
-        assert( type( parent ) == sm_layout )
-        self.parent = parent
-        assert( state_name )
-        assert( state_name == hsm_defaults.RSVD_START or state_name == hsm_defaults.RSVD_FINAL )
-        self.name = state_name
-        assert( model )
-        self.model = model
-
-        #print( f"start/final model={self.model}." )
-
-        layout = ccd_model.get_state_layout( self.model, default_outline = hsm_defaults.SS_OUTLINE_DEF )
-        self.x = layout.get( hsm_defaults.RSVD_LFT )
-        self.y = layout.get( hsm_defaults.RSVD_TOP )
-        self.line_size = hsm_defaults.THN_LINE_SIZE
-        self.crnr_size = hsm_defaults.THN_CRNR_SIZE
-        self.titl_size = hsm_defaults.THN_TITL_SIZE
-        self.w = self.crnr_size * 2
-        self.h = self.crnr_size * 2
-        ccd_model.set_state_size( self, wid = self.w, hgt = self.h )
-
-    def drag_start( self, event ):
-        self.drag_start_x = event.x
-        self.drag_start_y = event.y
-        self.drag_x = self.x
-        self.drag_y = self.y
-
-        #print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
-        self.prev_outline = self.parent.canvas.create_rectangle(
-            self.x,              self.y,
-            self.x + self.w - 1, self.y + self.h - 1,
-            outline = "#888888" )
-    
-    def drag_motion( self, event ):
-        new_x = self.x + ( event.x - self.drag_start_x )
-        # Round it up if closer to next grid point.
-        snap_x = new_x + ( hsm_defaults.GRID_PIX / 2 )
-        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
-        snap_x *= hsm_defaults.GRID_PIX
-        
-        new_y = self.y + ( event.y - self.drag_start_y )
-        snap_y = new_y + ( hsm_defaults.GRID_PIX / 2 )
-        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
-        snap_y *= hsm_defaults.GRID_PIX
-        
-        if snap_x != self.drag_x or snap_y != self.drag_y:
-            self.parent.canvas.delete( self.prev_outline )
-
-            self.drag_x = snap_x
-            self.drag_y = snap_y
-            #print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
-            self.prev_outline = self.parent.canvas.create_rectangle(
-                snap_x,              snap_y,
-                snap_x + self.w - 1, snap_y + self.h - 1,
-                outline = "#888888" )
-
-            # Update all associated transitions.
-            
-            global have_changes
-            have_changes = True
-            
-    def drag_stop( self, event ):
-        self.parent.canvas.delete( self.prev_outline )
-
-        if self.x != self.drag_x or self.y != self.drag_y:
-            self.x = self.drag_x
-            self.y = self.drag_y
-            self.model[ RSVD_LYOUT ][ "x" ] = self.x
-            self.model[ RSVD_LYOUT ][ "y" ] = self.y
-
-            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
-            self.parent.reroute_paths( self )
-            self.parent.paint()
-    
-    def paint( self ):
-        #print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
-
-        # Create a simple filled circle.
-        # Note: The bottom and right sides of the arc outline box
-        #       specify the last position, not last + 1 (as opposed to rectangles).
-        circle = self.parent.canvas.create_oval(
-            self.x + 0,          self.y + 0,
-            self.x + self.w - 1, self.y + self.h - 1,
-            width = 0, fill = "black", activefill = "darkgreen" )
-        # Make it dragable.
-        self.parent.canvas.tag_bind( circle, sequence = "<Button-1>", func = self.drag_start )
-        self.parent.canvas.tag_bind( circle, sequence = "<B1-Motion>", func = self.drag_motion )
-        self.parent.canvas.tag_bind( circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
-
-        # Add a white circle in the center if this is a final state.
-        if self.name == hsm_defaults.RSVD_FINAL:
-            radius = self.crnr_size / 2
-            inner_circle = self.parent.canvas.create_oval(
-                self.x + radius,             self.y + radius,
-                self.x + ( radius * 3 ) - 1, self.y + ( radius * 3 ) - 1,
-                width = 0, fill = "white", activefill = "lightgreen" )
-            # Make it dragable.
-            self.parent.canvas.tag_bind( inner_circle, sequence = "<Button-1>", func = self.drag_start )
-            self.parent.canvas.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
-            self.parent.canvas.tag_bind( inner_circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
-
 
 ####################################################################################################
 # This class manages the look, style, painting and editing behavior of a single state widget.
@@ -234,167 +146,138 @@ class sm_state_layout():
         self.name = state_name
         assert( model )
         self.model = model
+        layout = ccd_model.get_state_layout( self.model )
 
+        # These are used for dragging and resizing.
+        self.x1_start = 0
+        self.y1_start = 0
+        self.x2_start = 0
+        self.y2_start = 0
+
+        # Potential future feature of different line widths.
         self.line_size = hsm_defaults.THN_LINE_SIZE
         self.crnr_size = hsm_defaults.THN_CRNR_SIZE
         self.titl_size = hsm_defaults.THN_TITL_SIZE
 
+    def edit_start( self, event ):
+        # self.snapped_[x|y] is the current mouse drag / resize point, but on grid.
+        ( self.snapped_x, self.snapped_y ) = snap_to_grid( event.x, event.y )
+        self.drag_x_start = self.snapped_x
+        self.drag_y_start = self.snapped_y
 
-        # Either read the layout from the model or provide a default one.
-        global have_changes
+        ( self.x1_start,
+          self.y1_start,
+          self.x2_start,
+          self.y2_start ) = ccd_model.get_state_layout( self.model )
 
-        layout = model.get( hsm_defaults.RSVD_LYOUT )
-        if layout is None:
-            layout = { "x": DEF_STATE_LFT, "y": DEF_STATE_TOP, "w": DEF_STATE_WID, "h": DEF_STATE_HGT }
-            have_changes = True
-
-        self.x = layout.get( "x", None )
-        if self.x is None:
-            self.x = DEF_STATE_LFT
-            have_changes = True
-
-        self.y = layout.get( "y", None )
-        if self.y is None:
-            self.y = DEF_STATE_TOP
-            have_changes = True
-
-        self.w = layout.get( "w", None )
-        if self.w is None:
-            self.w = DEF_STATE_WID
-            have_changes = True
-
-        self.h = layout.get( "h", None )
-        if self.h is None:
-            self.h = DEF_STATE_HGT
-            have_changes = True
-
-    def size_drag_start( self, event ):
-        self.drag_start_x = event.x
-        self.drag_start_y = event.y
-        self.drag_x = self.x
-        self.drag_y = self.y
-
-        self.prev_wid = self.w
-        self.prev_hgt = self.h
-        self.most_wid = self.w
-        self.most_hgt = self.h
-        self.offs_wid = self.x + self.w - event.x
-        self.offs_hgt = self.y + self.h - event.y
-
-        #print( f"sm strt_otln = {self.x},{self.y} {self.w}x{self.h}" )
-        self.prev_outline = self.parent.canvas.create_rectangle(
-            self.x,              self.y,
-            self.x + self.w - 1, self.y + self.h - 1,
+        #print( f"sm start drag = {self.x1_start},{self.y1_start}" )
+        self.curr_outline = self.parent.canvas.create_rectangle(
+            self.x1_start,     self.y1_start,
+            self.x2_start - 1, self.y2_start - 1,
             outline = "#888888" )
     
     def drag_motion( self, event ):
-        new_x = self.x + ( event.x - self.drag_start_x )
-        # Round it up if closer to next grid point.
-        snap_x = new_x + ( hsm_defaults.GRID_PIX / 2 )
-        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
-        snap_x *= hsm_defaults.GRID_PIX
+        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
         
-        new_y = self.y + ( event.y - self.drag_start_y )
-        snap_y = new_y + ( hsm_defaults.GRID_PIX / 2 )
-        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
-        snap_y *= hsm_defaults.GRID_PIX
-        
-        if snap_x != self.drag_x or snap_y != self.drag_y:
-            self.parent.canvas.delete( self.prev_outline )
+        # self.snapped_[x|y] is the previous mouse drag / resize point, but on grid.
+        if new_x != self.snapped_x or new_y != self.snapped_y:
+            self.parent.canvas.delete( self.curr_outline )
 
-            self.drag_x = snap_x
-            self.drag_y = snap_y
-            #print( f"sm new_otln = {self.x},{self.y} {self.w}x{self.h}" )
-            self.prev_outline = self.parent.canvas.create_rectangle(
-                snap_x,              snap_y,
-                snap_x + self.w - 1, snap_y + self.h - 1,
+            new_x1 = self.x1_start + new_x - self.drag_x_start
+            new_y1 = self.y1_start + new_y - self.drag_y_start
+            new_x2 = new_x1 + self.x2_start - self.x1_start
+            new_y2 = new_y1 + self.y2_start - self.y1_start
+            self.curr_outline = self.parent.canvas.create_rectangle(
+                new_x1,     new_y1,
+                new_x2 - 1, new_y2 - 1,
                 outline = "#888888" )
 
-            global have_changes
-            have_changes = True
+            self.snapped_x = new_x
+            self.snapped_y = new_y
             
     def drag_stop( self, event ):
-        self.parent.canvas.delete( self.prev_outline )
+        self.parent.canvas.delete( self.curr_outline )
 
-        if self.x != self.drag_x or self.y != self.drag_y:
-            self.x = self.drag_x
-            self.y = self.drag_y
-            ccd_model.set_position( self.model, self.x, self.y )
+        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        
+        # self.snapped_[x|y] is the previous mouse drag / resize point, but on grid.
+        if new_x != self.drag_x_start or new_y != self.drag_y_start:
+            new_x1 = self.x1_start + new_x - self.drag_x_start
+            new_y1 = self.y1_start + new_y - self.drag_y_start
+            new_x2 = new_x1 + self.x2_start - self.x1_start
+            new_y2 = new_y1 + self.y2_start - self.y1_start
+            ccd_model.set_state_layout( self.model, ( new_x1, new_y1, new_x2, new_y2 ) )
+            #set_layout = ccd_model.get_state_layout( self.model )
+            #print( f'sm set {set_layout}' )
 
-            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
             self.parent.reroute_paths( self )
             self.parent.paint()
     
     def size_motion( self, event ):
-        self.parent.canvas.delete( self.prev_outline )
-        
-        temp_wid = event.x - self.x + self.offs_wid
-        if temp_wid < MIN_SM_WID:
-            temp_wid = MIN_SM_WID
-        # Round it up if closer to next grid point.
-        snap_x = temp_wid + ( hsm_defaults.GRID_PIX / 2 )
-        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
-        temp_wid = snap_x * hsm_defaults.GRID_PIX
-        self.prev_wid = temp_wid
-            
-        temp_hgt = event.y - self.y + self.offs_wid
-        if temp_hgt < MIN_SM_HGT:
-            temp_hgt = MIN_SM_HGT
-        snap_y = temp_hgt + ( hsm_defaults.GRID_PIX / 2 )
-        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
-        temp_hgt = snap_y * hsm_defaults.GRID_PIX
-        self.prev_hgt = temp_hgt
+        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
 
-        #print( f"sm prev_outline {self.x},{self.y},{self.x + temp_wid},{self.y + temp_hgt}" )
-        self.prev_outline = self.parent.canvas.create_rectangle(
-            self.x + 0,            self.y + 0,
-            self.x + temp_wid - 1, self.y + temp_hgt - 1,
-            outline = "#888888" )
+        # Make sure the resulting size of the window is still valid.
+        if ( new_x < self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ] ):
+            new_x  = self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ]
+        if ( new_y < self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ] ):
+            new_y  = self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ]
+        
+        # See if the mouse has moved enough to be on a new grid point.
+        if new_x != self.snapped_x or new_y != self.snapped_y:
+            self.parent.canvas.delete( self.curr_outline )
+        
+            self.snapped_x = new_x
+            self.snapped_y = new_y
+            
+            self.curr_outline = self.parent.canvas.create_rectangle(
+                self.x1_start, self.y1_start,
+                new_x - 1,     new_y - 1,
+                outline = "#888888" )
 
     def size_stop( self, event ):
-        temp_wid = event.x - self.x + self.offs_wid
-        if temp_wid < MIN_SM_WID:
-            temp_wid = MIN_SM_WID
-        # Round it up if closer to next grid point.
-        snap_x = temp_wid + ( hsm_defaults.GRID_PIX / 2 )
-        snap_x = int( snap_x / hsm_defaults.GRID_PIX )
-        temp_wid = snap_x * hsm_defaults.GRID_PIX
+        self.parent.canvas.delete( self.curr_outline )
 
-        temp_hgt = event.y - self.y + self.offs_wid
-        if temp_hgt < MIN_SM_HGT:
-            temp_hgt = MIN_SM_HGT
-        snap_y = temp_hgt + ( hsm_defaults.GRID_PIX / 2 )
-        snap_y = int( snap_y / hsm_defaults.GRID_PIX )
-        temp_hgt = snap_y * hsm_defaults.GRID_PIX
-
-        if self.w != temp_wid or self.h != temp_hgt:
-            self.w = temp_wid
-            self.h = temp_hgt
-            self.model[ RSVD_LYOUT ][ "w" ] = self.w
-            self.model[ RSVD_LYOUT ][ "h" ] = self.h
-            #print( f"sm new_outline {self.x},{self.y},{self.x + self.w},{self.y + self.h}" )
-            
-            self.parent.reroute_paths( self )
-            self.parent.paint()
-            global have_changes
-            have_changes = True
+        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        
+        # Make sure the resulting size of the window is still valid.
+        if ( new_x < self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ] ):
+            new_x  = self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ]
+        if ( new_y < self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ] ):
+            new_y  = self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ]
+        
+        if new_x != self.x2_start or new_y != self.y2_start:
+            # Make sure the resulting size of the window is still valid.
+            proposed_wid = self.snapped_x - self.x1_start
+            proposed_hgt = self.snapped_y - self.y1_start
+            if proposed_wid >= hsm_defaults.SM_OUTLINE_MIN[ 'w' ] and proposed_hgt >= hsm_defaults.SM_OUTLINE_MIN[ 'h' ]:
+                x1 = self.x1_start
+                y1 = self.y1_start
+                x2 = new_x
+                y2 = new_y
+                
+                ccd_model.set_state_layout( self.model, ( x1, y1, x2, y2 ) )
+                set_layout = ccd_model.get_state_layout( self.model )
+                print( f'sm size {set_layout}' )
+                self.parent.paint()
         
     def paint( self ):
-        #print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+        ( x1, y1, x2, y2 ) = ccd_model.get_state_layout( self.model )
 
         # Create a rounded rectangle along the edges of this canvas.
         # Note: For widths greater than 1, x and y coordinates relate
         #       to the center of the line or arc.
-        top_ctr_y = 0      + ( self.line_size / 2 )
-        rgt_ctr_x = self.w - ( self.line_size / 2 )
-        btm_ctr_y = self.h - ( self.line_size / 2 )
-        lft_ctr_x = 0      + ( self.line_size / 2 )
+        wid = x2 - x1
+        hgt = y2 - y1
+        top_ctr_y = 0   + ( self.line_size / 2 )
+        rgt_ctr_x = wid - ( self.line_size / 2 )
+        btm_ctr_y = hgt - ( self.line_size / 2 )
+        lft_ctr_x = 0   + ( self.line_size / 2 )
         # Compute Arc Endpoints
         # Note: The x,y coordinates for the arc are to enclose a full ellipse.
-        top_arc_y = 0      + ( self.crnr_size * 2 )
-        rgt_arc_x = self.w - ( self.crnr_size * 2 )
-        btm_arc_y = self.h - ( self.crnr_size * 2 )
-        lft_arc_x = 0      + ( self.crnr_size * 2 )
+        top_arc_y = 0   + ( self.crnr_size * 2 )
+        rgt_arc_x = wid - ( self.crnr_size * 2 )
+        btm_arc_y = hgt - ( self.crnr_size * 2 )
+        lft_arc_x = 0   + ( self.crnr_size * 2 )
 
         #paint_wid = self.w - 1
         #paint_hgt = self.h - 1
@@ -409,87 +292,131 @@ class sm_state_layout():
         title_cntr_x = title_posn_x + int( title_size_x / 2 )
         title_cntr_y = title_posn_y + int( title_size_y / 2 )
         title_rect = self.parent.canvas.create_rectangle(
-            self.x + title_posn_x, self.y + title_posn_y,
-            self.x + title_posn_x + title_size_x, self.y + title_posn_y + title_size_y,
+            x1 + title_posn_x,                y1 + title_posn_y,
+            x1 + title_posn_x + title_size_x, y1 + title_posn_y + title_size_y,
             width = 0,
             activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
         title_text = self.parent.canvas.create_text(
-            self.x + title_cntr_x, self.y + title_cntr_y,
+            x1 + title_cntr_x, y1 + title_cntr_y,
             text = self.name, justify = "center", width = 0, activefill = "darkgreen" )
         # Drag the state widget using the title bar.
-        self.parent.canvas.tag_bind( title_text, sequence = "<Button-1>", func = self.size_drag_start )
+        self.parent.canvas.tag_bind( title_text, sequence = "<Button-1>", func = self.edit_start )
         self.parent.canvas.tag_bind( title_text, sequence = "<B1-Motion>", func = self.drag_motion )
         self.parent.canvas.tag_bind( title_text, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
         # Resize the state widget using the bottom right corner.
         size_rect = self.parent.canvas.create_rectangle(
-            self.x + rgt_arc_x, self.y + btm_arc_y,
-            self.x + rgt_ctr_x, self.y + btm_ctr_y,
+            x1 + rgt_arc_x, y1 + btm_arc_y,
+            x1 + rgt_ctr_x, y1 + btm_ctr_y,
             width = 0,
             activeoutline = "#EEEEEE", activefill = "#EEEEEE" )
-        self.parent.canvas.tag_bind( size_rect, sequence = "<Button-1>", func = self.size_drag_start )
+        self.parent.canvas.tag_bind( size_rect, sequence = "<Button-1>", func = self.edit_start )
         self.parent.canvas.tag_bind( size_rect, sequence = "<B1-Motion>", func = self.size_motion )
         self.parent.canvas.tag_bind( size_rect, sequence = "<ButtonRelease-1>", func = self.size_stop )
 
         # Top Line
         self.parent.canvas.create_line(
-            self.x + 0      + self.crnr_size, self.y + top_ctr_y,
-            self.x + self.w - self.crnr_size, self.y + top_ctr_y,
+            x1 + self.crnr_size, y1 + top_ctr_y,
+            x2 - self.crnr_size, y1 + top_ctr_y,
             width = self.line_size )
             
         # Upper Right Corner
         # Note: The bottom and right sides of the arc outline box
         #       specify the last position, not last + 1.
         self.parent.canvas.create_arc(
-            self.x + rgt_arc_x    , self.y + top_ctr_y    ,
-            self.x + rgt_ctr_x - 1, self.y + top_arc_y - 1,
+            x1 + rgt_arc_x    , y1 + top_ctr_y    ,
+            x1 + rgt_ctr_x - 1, y1 + top_arc_y - 1,
             start = 0, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Right Line
         self.parent.canvas.create_line(
-            self.x + rgt_ctr_x, self.y + 0      + self.crnr_size,
-            self.x + rgt_ctr_x, self.y + self.h - self.crnr_size,
+            x1 + rgt_ctr_x, y1 + self.crnr_size,
+            x1 + rgt_ctr_x, y2 - self.crnr_size,
             width = self.line_size )
             
         # Bottom Right Corner
         self.parent.canvas.create_arc(
-            self.x + rgt_arc_x    , self.y + btm_arc_y    ,
-            self.x + rgt_ctr_x - 1, self.y + btm_ctr_y - 1,
+            x1 + rgt_arc_x    , y1 + btm_arc_y    ,
+            x1 + rgt_ctr_x - 1, y1 + btm_ctr_y - 1,
             start = 270, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Bottom Line
         self.parent.canvas.create_line(
-            self.x + self.w - self.crnr_size, self.y + btm_ctr_y,
-            self.x + 0      + self.crnr_size, self.y + btm_ctr_y,
+            x2 - self.crnr_size, y1 + btm_ctr_y,
+            x1 + self.crnr_size, y1 + btm_ctr_y,
             width = self.line_size )
             
         # Bottom Left Corner
         self.parent.canvas.create_arc(
-            self.x + lft_ctr_x    , self.y + btm_arc_y    ,
-            self.x + lft_arc_x - 1, self.y + btm_ctr_y - 1,
+            x1 + lft_ctr_x    , y1 + btm_arc_y    ,
+            x1 + lft_arc_x - 1, y1 + btm_ctr_y - 1,
             start = 180, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Left Line
         self.parent.canvas.create_line(
-            self.x + lft_ctr_x, self.y + self.h - self.crnr_size, 
-            self.x + lft_ctr_x, self.y + 0      + self.crnr_size,
+            x1 + lft_ctr_x, y2 - self.crnr_size, 
+            x1 + lft_ctr_x, y1 + self.crnr_size,
             width = self.line_size )
             
         # Top Left Corner
         self.parent.canvas.create_arc(
-            self.x + lft_ctr_x    , self.y + top_ctr_y    ,
-            self.x + lft_arc_x - 1, self.y + top_arc_y - 1,
+            x1 + lft_ctr_x    , y1 + top_ctr_y    ,
+            x1 + lft_arc_x - 1, y1 + top_arc_y - 1,
             start = 90, extent = 90,
             style = 'arc', width = self.line_size )
             
         # Section off the title bar.
         self.parent.canvas.create_line(
-            self.x + lft_ctr_x, self.y + self.line_size + self.titl_size, 
-            self.x + rgt_ctr_x, self.y + self.line_size + self.titl_size, 
+            x1 + lft_ctr_x, y1 + self.line_size + self.titl_size, 
+            x1 + rgt_ctr_x, y1 + self.line_size + self.titl_size, 
             width = self.line_size )
+
+# The Layout Widget for Start and Final States
+class sm_start_final_state_layout( sm_state_layout ):
+    def __init__( self, parent: object, state_name: str, model: ccd_model ):
+        super().__init__( parent, state_name, model )
+        assert( state_name == hsm_defaults.RSVD_START or state_name == hsm_defaults.RSVD_FINAL )
+        
+    def drag_start( self, event ):
+        return super().edit_start( event )
+
+    def drag_motion( self, event ):
+        return super().drag_motion( event )
+
+    def drag_stop( self, event ):
+        return super().drag_stop( event )
+
+    def paint( self ):
+        #print( f"sm paint canv, {self.name} = {self.x},{self.y} {self.w}x{self.h}" )
+
+        ( x1, y1, x2, y2 ) = ccd_model.get_state_layout( self.model )
+
+        # Create a simple filled circle.
+        # Note: The bottom and right sides of the arc outline box
+        #       specify the last position, not last + 1 (as opposed to rectangles).
+        circle = self.parent.canvas.create_oval(
+            x1 + 0, y1 + 0,
+            x2 - 1, y2 - 1,
+            width = 0, fill = "black", activefill = "darkgreen" )
+        # Make it dragable.
+        self.parent.canvas.tag_bind( circle, sequence = "<Button-1>", func = self.drag_start )
+        self.parent.canvas.tag_bind( circle, sequence = "<B1-Motion>", func = self.drag_motion )
+        self.parent.canvas.tag_bind( circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
+
+        # Add a white circle in the center if this is a final state.
+        if self.name == hsm_defaults.RSVD_FINAL:
+            radius = self.crnr_size / 2
+            inner_circle = self.parent.canvas.create_oval(
+                x1 + radius,             y1 + radius,
+                x1 + ( radius * 3 ) - 1, y1 + ( radius * 3 ) - 1,
+                width = 0, fill = "white", activefill = "lightgreen" )
+            # Make it dragable.
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<Button-1>", func = self.drag_start )
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<B1-Motion>", func = self.drag_motion )
+            self.parent.canvas.tag_bind( inner_circle, sequence = "<ButtonRelease-1>", func = self.drag_stop )
 
 
 ####################################################################################################
@@ -507,10 +434,10 @@ class sm_layout( tk.Frame ):
         canv_w = self.winfo_width()
         canv_h = self.winfo_height()
         #print( f"Inp model:" )
-        #print( json.dumps( curr_model, indent = 2 ) )
-        ( canv_x1, canv_y1, canv_x2, canv_y2 ) = ccd_model.find_paint_rect( curr_model, min_x = 0, min_y = 0, max_x = canv_w, max_y = canv_h )
-        view_str = f"{canv_x1} {canv_y1} {canv_x2} {canv_y2}"
+        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
+        ( canv_x1, canv_y1, canv_x2, canv_y2 ) = ccd_model.find_paint_rect( ccd_model.curr_model, min_x = 0, min_y = 0, max_x = canv_w, max_y = canv_h )
         #print( f"F Wrk Frame = {self.winfo_width()}x{self.winfo_height()}" )
+        view_str = f"{canv_x1} {canv_y1} {canv_x2} {canv_y2}"
         self.canvas = tk.Canvas( master = self, width = canv_x2 - canv_x1, height = canv_y2 - canv_y1, bd = 0, highlightthickness = 0, relief = 'ridge', scrollregion = view_str )
         self.canvas.grid( row = 0, column = 0, padx = 0, pady = 0 )
         self.canvas.grid_propagate( False )
@@ -520,13 +447,12 @@ class sm_layout( tk.Frame ):
         self.line_size = hsm_defaults.THN_LINE_SIZE
         self.crnr_size = hsm_defaults.THN_CRNR_SIZE
 
-        self.model = ccd_model.curr_model
         # Set up a selection resolver to cover the working frame.
-        self.selector = ccd_ui_select.ccd_ui_select( working_frame = self, working_model = self.model )
+        self.selector = ccd_ui_select.ccd_ui_select( working_frame = self, working_model = ccd_model.curr_model )
 
         # Resolve any layout issues for each state.
         self.state_widgets = []
-        sub_states = ccd_model.get_sub_states( self.model )
+        sub_states = ccd_model.get_sub_states( ccd_model.curr_model )
         if sub_states:
             for state_name, state in sub_states.items():
                 state_outline = sm_state_outline( state )
@@ -534,7 +460,7 @@ class sm_layout( tk.Frame ):
                 #    # State had no layout info, use a default.
                 #    state = {'layout': {'x': state_outline.lft, 'y': state_outline.top, 'w': state_outline.wid, 'h': state_outline.hgt }}
                 #print( f"state {state_name} = {json.dumps( state, indent = 2 )}." )
-                self.model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
+                ccd_model.curr_model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
                 #print( f"{state_name} @ {state_outline.lft},{state_outline.top}-{state_outline.wid}x{state_outline.hgt}." )
 
                 if state_name == hsm_defaults.RSVD_START or state_name == hsm_defaults.RSVD_FINAL:
@@ -555,16 +481,14 @@ class sm_layout( tk.Frame ):
                             #print( f"1. {state_name} - {state}" )
                             dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
                             if dst_state_name:
-                                dst_state = self.model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
+                                dst_state = ccd_model.curr_model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
                                 path = self.find_default_path( state, transition, dst_state )
-                                self.model[ RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
-                                global have_changes
-                                have_changes = True
+                                ccd_model.curr_model[ RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
                             else:
                                 print( f"Transition missing destination { transition_name }: { transition }" )
                                 assert( False )
             #print( f"Out model:" )
-            #print( json.dumps( self.model, indent = 2 ) )
+            #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
 
     ## Might add a border thickness feature later.
     #def set_border_thickness( self, weight: int ):
@@ -598,7 +522,7 @@ class sm_layout( tk.Frame ):
     #        A = path[ point_idx ]
     #        clean_path.append( A )
     #        B = path[ point_idx + 1 ]
-    #        for state_name, state in self.model.get( RSVD_STATES, {} ).items():
+    #        for state_name, state in ccd_model.curr_model.get( RSVD_STATES, {} ).items():
     #            #print( f"{state_name} = {json.dumps( state, indent = 2 )}" )
     #            state_outline = sm_state_outline( state ).get_path()
     #            intersections = []
@@ -638,7 +562,7 @@ class sm_layout( tk.Frame ):
     def get_trans_list( self ) -> list:
         transition_list = []
         # Start at the top level of the model.
-        states = self.model.get( hsm_defaults.RSVD_STATES, {} )
+        states = ccd_model.curr_model.get( hsm_defaults.RSVD_STATES, {} )
         if states:
             for state_name, state in states.items():
                 if state.get( hsm_defaults.RSVD_TRAN ):
@@ -754,36 +678,48 @@ class sm_layout( tk.Frame ):
     # This method is for internal use only to facilitate a recursive tree traversal.
     # Call reroute_paths() instead.
     def reroute_changed_paths( self, model: dict ) -> dict:
-        changed_model = dict( model )
         #print( json.dumps( model, indent = 2 ) )
 
-        # Start at the top level of the model.
-        states = model.get( hsm_defaults.RSVD_STATES, {} )
-        if states:
-            for state_name, state in states.items():
-                
-                # Does this state have the changed_state as a destination?
-                #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
-                if state.get( hsm_defaults.RSVD_TRAN ):
-                    transitions = dict( state.get( hsm_defaults.RSVD_TRAN ) )
-                    for transition_name, transition in transitions.items():
-                        path = transition.get( hsm_defaults.RSVD_PATH )
-                        if path is not None:
-                            dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
-                            if dst_state_name:
-                                dst_state = model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
-                                if self.changed_state.name == state_name or dst_state_name == self.changed_state.name:
-                                    #print( f"Updating path from {state_name} to {dst_state_name}" )
-                                    path = self.find_default_path( state, transition, dst_state )
-                                    changed_model[ hsm_defaults.RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
-            changed_model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
+        # Check all states to see if any enter this state.
+        
+        ## Start at the top level of the model.
+        #states = model.get( hsm_defaults.RSVD_STATES, {} )
+        #if states:
+        #    for state_name, state in states.items():
+        #        
+        #        # Does this state have the changed_state as a destination?
+        #        #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
+        #        if state.get( hsm_defaults.RSVD_TRAN ):
+        #            transitions = dict( state.get( hsm_defaults.RSVD_TRAN ) )
+        #            for transition_name, transition in transitions.items():
+        #                path = transition.get( hsm_defaults.RSVD_PATH )
+        #                if path is not None:
+        #                    dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
+        #                    if dst_state_name:
+        #                        dst_state = model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
+        #                        if self.changed_state.name == state_name or dst_state_name == self.changed_state.name:
+        #                            #print( f"Updating path from {state_name} to {dst_state_name}" )
+        #                            path = self.find_default_path( state, transition, dst_state )
+        #                            changed_model[ hsm_defaults.RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
+        #    changed_model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
             
         return changed_model
 
     def reroute_paths( self, changed_state: object ) -> dict:
-        assert( type( changed_state ) is sm_state_layout or type( changed_state ) is sm_start_final_state_layout )
+        assert( type( changed_state ) is sm_state_layout
+             or type( changed_state ) is sm_start_final_state_layout )
         self.changed_state = changed_state
         #print( f"changed_state = '{self.changed_state.name}'" )
-        #print( json.dumps( self.model, indent = 2 ) )
-        self.model = self.reroute_changed_paths( self.model )
-        #print( json.dumps( self.model, indent = 2 ) )
+        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
+
+        # !!!! Can't do this! It changes the type from ccd_model_cl to dict! !!!!
+        #ccd_model.curr_model = self.reroute_changed_paths( ccd_model.curr_model )
+
+        state_path = [ "Counting Seconds" ]
+        #sub_states = ccd_model.curr_model.get_substate_paths( state_path ) # -> list[ ccd_state_path ]
+        state = ccd_model.curr_model.get_state_reference( state_path )
+        #print( f'state {state_path} = {state}' )
+        # An empty list means states at the root/top level.
+        sub_states = ccd_model.curr_model.get_substate_paths( [] )
+        
+        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )

@@ -143,7 +143,7 @@ class ccd_ui_layout( tk.Tk ):
 
         # Working Canvas
         work_frame_wid = app_wid - tool_width - 1
-        # Not sure why, but this extra -2 tweak is currently needed to fit the work area corners.
+        # Not sure why, but this extra -2 tweak is needed to fit the work area corners.
         work_frame_hgt = app_hgt - menu_height - 1 - 2
         self.work_frame = tk.Frame( paned_sub_win, width = work_frame_wid, height = work_frame_hgt, background = 'white' )
         self.work_frame.grid( row = 0, column = 0, padx = 0, pady = 0 )
@@ -172,12 +172,15 @@ class ccd_ui_layout( tk.Tk ):
                 #ccd_model.curr_model = ccd_model.load_model_from_file( mru_filename )
                 ccd_model.load_model_from_file( filename = mru_filename )
 
+        #print( f"Inp model:" )
+        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
+
         #self.hsm_canvas = ccd_ui_hsm.sm_canvas( self.work_frame, model = ccd_model.curr_model, width = work_frame_wid, height = work_frame_hgt )
         #self.hsm_canvas.paint()
         #self.hsm_layout = ccd_ui_hsm.sm_layout( self.work_frame, model = ccd_model.curr_model, width = work_frame_wid, height = work_frame_hgt )
         self.hsm_layout = ccd_ui_hsm.sm_layout( self.work_frame, width = work_frame_wid, height = work_frame_hgt )
         self.hsm_layout.paint()
-        
+
 
     # Track main app window size & placement.
     def win_resize_cb( self, event ):

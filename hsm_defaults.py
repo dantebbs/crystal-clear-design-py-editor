@@ -1,4 +1,7 @@
 
+# A default name for convenience.
+HSM_DEFAULT_FILENAME = "hsm_model.json"
+
 # These Reserved Words are the dictionary keys used throughout the model to access sub-fields.
 RSVD_STATES = "states"
 RSVD_LYOUT = "layout"

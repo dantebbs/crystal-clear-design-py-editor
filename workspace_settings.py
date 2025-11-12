@@ -190,6 +190,7 @@ def load_settings( screen_max_x: int, screen_max_y: int, filename: str = DEFAULT
     
     #curr_settings.layout_style_weight = curr_settings.get_value( "layout_style_weight", BRD_WEIGHT_THN )
 
+    #print( f'settings = {curr_settings.settings}' )
     return
 
 ####################################################################################################
@@ -406,8 +407,9 @@ def set_app_left( left: int = None ) -> None:
     if ( left < 0 or left >= curr_settings.max_width ):
         # Invalid left position, don't set it.
         # Use what is already in the settings.
-        left = curr_settings.get_app_left()
+        left = get_app_left()
 
+    #print( f'set_app_left( {left} )' )
     curr_settings.set_value( [ "app_window", "left" ], left )
 
 ####################################################################################################
@@ -455,7 +457,7 @@ def set_app_top( top: int = None ) -> None:
     if ( top < 0 or top >= curr_settings.max_height ):
         # Invalid top position, don't set it.
         # Use what is already in the settings.
-        top = curr_settings.get_app_top()
+        top = get_app_top()
 
     curr_settings.set_value( [ "app_window", "top" ], top )
 
@@ -497,8 +499,8 @@ def get_app_posn() -> tuple:
 # Param:  width  Must be between 1 and monitor-width.
 # Param:  height  Must be between 1 and monitor-height.
 def set_app_posn( left: int = None, top: int = None ) -> None:
-    curr_settings.set_app_left( left )
-    curr_settings.set_app_top( top )
+    set_app_left( left )
+    set_app_top( top )
 
 ####################################################################################################
 # See if an MRU file path is available.

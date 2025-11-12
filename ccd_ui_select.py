@@ -46,7 +46,7 @@ class ccd_ui_select:
             for point_idx in range( len( path ) - 1 ):
                 src_pt = path[ point_idx + 0 ]
                 dst_pt = path[ point_idx + 1 ]
-                print( f"{point} -> {src_pt},{dst_pt}" )
+                #print( f"{point} -> {src_pt},{dst_pt}" )
 
     def unresolved_drag_cb( self, event ):
         #print( f"Drag -> {event}" )

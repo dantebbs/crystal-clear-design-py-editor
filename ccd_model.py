@@ -9,6 +9,11 @@ import workspace_settings
 import hsm_defaults
 
 
+# Get the name of this particular code module.
+this_module = sys.modules[__name__]
+
+
+# TODO: Delete this example when done.
 HSM_BLANK_TEMPLATE = """
 {
   "events": [
@@ -27,8 +32,8 @@ HSM_BLANK_TEMPLATE = """
   }
 }
 """
-HSM_DEFAULT_FILENAME = "hsm_model.json"
 
+# TODO: Create a set of regression tests.
 HSM_TEST_01 = """
 {
   "events": [
@@ -57,8 +62,16 @@ HSM_TEST_01 = """
 """
 
 
-# Get the name of this particular code module.
-this_module = sys.modules[__name__]
+####################################################################################################
+# A feature is included where state names are allowed to be reused.
+# This neccessitates disambiguation by using a full path for each state reference.
+# Getting and setting properties of a state use this full path for indexing.
+# Note: This is different from the layout paths, which contain x and y points. This path represents
+# the hierarchical tree of states with parent-child relationships.
+class ccd_state_path( list[ str ] ):
+    def __init__( self, *args ):
+        list.__init__( self, *args )
+
 
 ####################################################################################################
 class ccd_model_cl( dict ):
@@ -88,22 +101,69 @@ class ccd_model_cl( dict ):
         elif ( val != self[ key ] ):
             self.has_model_changed = True
         dict.__setitem__( self, key, val )
+    
+    def get_state_reference( self, state_path: ccd_state_path ) -> dict:
+        assert( isinstance( state_path, ccd_state_path )
+           or ( isinstance( state_path, list ) ) )
+        for state in state_path:
+            assert( isinstance( state, str ) )
+        
+        state_reference = self
+        for state_path_idx in range( len( state_path ) ):
+            sub_states = state_reference.get( hsm_defaults.RSVD_STATES )
+            assert( state_path[ state_path_idx ] in sub_states )
+            state_reference = sub_states.get( state_path[ state_path_idx ] )
+        
+        return state_reference
+        
+    def get_substate_paths( self, state_path: ccd_state_path ) -> list[ ccd_state_path ]:
+        assert( isinstance( state_path, ccd_state_path )
+           or ( isinstance( state_path, list ) ) )
+        for state in state_path:
+            assert( isinstance( state, str ) )
+        
+        state = self.get_state_reference( state_path )
+        sub_state_paths = []
+        sub_states = state.get( hsm_defaults.RSVD_STATES )
+        for sub_state_name, sub_state in sub_states.items():
+            sub_state_path = state_path[:]
+            sub_state_path.append( sub_state_name )
+            sub_state_paths.append( sub_state_path )
+        #print( f'sub_states = {sub_state_paths}' )
 
 ####################################################################################################
-global curr_model
 curr_model = ccd_model_cl( {} )
 
 ####################################################################################################
 def get_sub_states( state: dict ) -> dict:
-    print( f"get_sub_states( state: {type( state )} )" )
+    #print( f"get_sub_states( state: {type( state )} )" )
     assert( isinstance( state, dict ) )
     return state.get( hsm_defaults.RSVD_STATES )
 
 ####################################################################################################
-def get_state_layout( state: dict, default_outline: dict = hsm_defaults.SM_OUTLINE_DEF ) -> dict:
+# Returns: A 4-tuple of the form ( x1, y1, x2, y2 ) or ( left, top, right, bottom )
+def get_state_layout( state: dict, default_outline: dict = hsm_defaults.SM_OUTLINE_DEF ) -> tuple:
     layout = state.get( hsm_defaults.RSVD_LYOUT, default_outline )
     #print( f"State \"{state}\" has layout {layout}." )
-    return layout
+    return ( layout[ hsm_defaults.RSVD_LFT ],
+             layout[ hsm_defaults.RSVD_TOP ],
+             layout[ hsm_defaults.RSVD_LFT ] + layout[ hsm_defaults.RSVD_WID ],
+             layout[ hsm_defaults.RSVD_TOP ] + layout[ hsm_defaults.RSVD_HGT ] )
+
+####################################################################################################
+def set_state_layout( state: dict, new_layout: tuple ) -> None:
+    assert( isinstance( state, dict ) )
+    assert( len( state ) > 0 )
+    assert( isinstance( new_layout, tuple ) )
+    assert( len( new_layout ) == 4 )
+    
+    layout = state.get( hsm_defaults.RSVD_LYOUT, new_layout )
+    #print( f"Changing State \"{state}\" to new layout {layout}." )
+    layout[ hsm_defaults.RSVD_LFT ] = new_layout[ 0 ]
+    layout[ hsm_defaults.RSVD_TOP ] = new_layout[ 1 ]
+    layout[ hsm_defaults.RSVD_WID ] = new_layout[ 2 ] - new_layout[ 0 ]
+    layout[ hsm_defaults.RSVD_HGT ] = new_layout[ 3 ] - new_layout[ 1 ]
+    curr_model.has_model_changed = True
 
 ####################################################################################################
 def get_trans_layout( trans: dict ) -> dict:
@@ -111,19 +171,7 @@ def get_trans_layout( trans: dict ) -> dict:
 
 ####################################################################################################
 def get_transitions( state:dict ) -> list:
-    transition_list = []
-    states = state.get( hsm_defaults.RSVD_STATES, {} )
-    if states:
-        for state_name, sub_state in states.items():
-            if sub_state.get( hsm_defaults.RSVD_TRAN ):
-                transitions = dict( sub_state.get( hsm_defaults.RSVD_TRAN ) )
-                for transition_name, transition in transitions.items():
-                    transition[ hsm_defaults.RSVD_SRC ] = state_name
-                    transition[ hsm_defaults.RSVD_DEST ] = transition_name
-                    transition_list.append( transition )
-            sub_state_trans = get_transitions( state )
-            transition_list.append( sub_state_trans )
-    return transition_list
+    return state.get( hsm_defaults.RSVD_TRAN )
 
 ####################################################################################################
 def set_position( state: dict, x: int, y: int ):
@@ -132,7 +180,7 @@ def set_position( state: dict, x: int, y: int ):
     assert( type( y ) is int )
     state[ hsm_defaults.RSVD_LYOUT ][ hsm_defaults.RSVD_LFT ] = x
     state[ hsm_defaults.RSVD_LYOUT ][ hsm_defaults.RSVD_TOP ] = y
-    ccd_model.has_model_changed = True
+    curr_model.has_model_changed = True
 
 ####################################################################################################
 def find_paint_rect( state: dict, min_x: int, min_y:int, max_x: int, max_y: int ) -> tuple:
@@ -159,24 +207,26 @@ def find_paint_rect( state: dict, min_x: int, min_y:int, max_x: int, max_y: int 
 
     sub_states = get_sub_states( state )
     if sub_states:
-        transitions = dict( sub_states.get( hsm_defaults.RSVD_TRAN ) )
-        for transition_name, transition in transitions.items():
-            # Push extents out again as needed to cover each transition path.
-            path = transition.get( hsm_defaults.RSVD_PATH )
-            if path:
-                for point in path:
-                    x = point.get( hsm_defaults.RSVD_LFT )
-                    if not None:
-                        if min_x > x:
-                            min_x = x
-                        if max_x < x:
-                            max_x = x
-                    y = point.get( hsm_defaults.RSVD_TOP )
-                    if not None:
-                        if min_y > y:
-                            min_y = y
-                        if max_y < y:
-                            max_y = y
+        #transitions = dict( sub_states.get( hsm_defaults.RSVD_TRAN ) )
+        transitions = get_transitions( state )
+        if transitions:
+            for transition_name, transition in transitions.items():
+                # Push extents out again as needed to cover each transition path.
+                path = transition.get( hsm_defaults.RSVD_PATH )
+                if path:
+                    for point in path:
+                        x = point.get( hsm_defaults.RSVD_LFT )
+                        if not None:
+                            if min_x > x:
+                                min_x = x
+                            if max_x < x:
+                                max_x = x
+                        y = point.get( hsm_defaults.RSVD_TOP )
+                        if not None:
+                            if min_y > y:
+                                min_y = y
+                            if max_y < y:
+                                max_y = y
 
         # Recursion to account for sub-states.
         for state_name, sub_state in sub_states.items():
@@ -200,7 +250,10 @@ def load_model_from_file( filename: str = "" ):
                 print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
             else:
                 try:
+                    global curr_model
                     curr_model = ccd_model_cl( json.load( model_file ) )
+                    #print( f"Inp model:" )
+                    #print( json.dumps( curr_model, indent = 2 ) )
                     curr_model.filename = filename
                     curr_model.has_model_changed = False
                     workspace_settings.set_latest_used_model( filename )
@@ -211,10 +264,12 @@ def load_model_from_file( filename: str = "" ):
         except OSError:
             print( f"WARN: There is something wrong with the file {filename}, and it can't be opened." )
             
+    #print( f'INFO: Loaded {curr_model}' )
     return
 
 ####################################################################################################
 def save_model_to_file( tk_canvas: object, filename: str = "" ) -> bool:
+    global curr_model
     if ( ( filename == "" or filename == curr_model.filename ) and not curr_model.has_model_changed ):
         # This is a request to save the current model, but there are no changes to save.
         return True
@@ -228,13 +283,13 @@ def save_model_to_file( tk_canvas: object, filename: str = "" ) -> bool:
     # If no filename is supplied, assume the request is to save the current file.
     filename_to_save = filename
     if ( filename_to_save == "" ):
-        filename_to_save = self.filename
+        filename_to_save = curr_model.filename
         if ( should_auto_save ):
             use_dialog = False
     
     # If no filename was supplied earlier, supply a default name and a dialog box.
     if ( filename_to_save == "" ):
-        filename_to_save = HSM_DEFAULT_FILENAME
+        filename_to_save = hsm_defaults.HSM_DEFAULT_FILENAME
 
     # Serialize the JSON state machine description.
     try:
