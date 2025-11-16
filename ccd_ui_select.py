@@ -11,6 +11,7 @@ import workspace_settings
 #import hierarchical_state_machine
 import ccd_ui_hsm
 import hsm_defaults
+import ccd_model
 
 try:
     import hierarchical_state_machine as hsm
@@ -39,14 +40,16 @@ class ccd_ui_select:
         # Go through each transition path segment, and find the closest one.
         nearest = 10000000
         point = ( event.x, event.y )
-        trans_list = self.frame.get_trans_list()
+        #print( f'unresolved_click_cb( {self}, {event} )' )
+        trans_list = ccd_model.get_transitions( self.model )
         #print( f"Click -> {trans_list}" )
-        for transition in trans_list:
-            path = transition.get( hsm_defaults.RSVD_PATH )
-            for point_idx in range( len( path ) - 1 ):
-                src_pt = path[ point_idx + 0 ]
-                dst_pt = path[ point_idx + 1 ]
-                #print( f"{point} -> {src_pt},{dst_pt}" )
+        if trans_list:
+            for transition in trans_list:
+                path = ccd_model.get_transition_path( transition )
+                for point_idx in range( len( path ) - 1 ):
+                    src_pt = path[ point_idx + 0 ]
+                    dst_pt = path[ point_idx + 1 ]
+                    #print( f"{point} -> {src_pt},{dst_pt}" )
 
     def unresolved_drag_cb( self, event ):
         #print( f"Drag -> {event}" )

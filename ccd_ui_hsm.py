@@ -39,11 +39,14 @@ this_module = sys.modules[__name__]
 
 
 ####################################################################################################
-# Returns a point as an ( x, y ) tuple, where the integers are guaranteed to be moved to the nearest
+# Returns a point as an [ x, y ] list, where the integers are guaranteed to be moved to the nearest
 # point on the regular grid with horizontal and vertical spacing of GRID_PIX.
-def snap_to_grid( x: int, y: int ) -> tuple:
-    assert( isinstance( x, int ) )
-    assert( isinstance( y, int ) )
+def snap_to_grid( point: list ) -> list:
+    assert( isinstance( point, list ) )
+    assert( len( point ) == 2 )
+    assert( isinstance( point[ 0 ], int ) )
+    assert( isinstance( point[ 1 ], int ) )
+    [ x, y ] = point
     
     # Round it up if closer to next grid point.
     rounded_x = x + ( hsm_defaults.GRID_PIX / 2 )
@@ -54,7 +57,7 @@ def snap_to_grid( x: int, y: int ) -> tuple:
     grids_y = int( rounded_y / hsm_defaults.GRID_PIX )
     snapped_y = grids_y * hsm_defaults.GRID_PIX
     
-    return ( snapped_x, snapped_y )
+    return [ snapped_x, snapped_y ]
     
 
 ####################################################################################################
@@ -161,7 +164,7 @@ class sm_state_layout():
 
     def edit_start( self, event ):
         # self.snapped_[x|y] is the current mouse drag / resize point, but on grid.
-        ( self.snapped_x, self.snapped_y ) = snap_to_grid( event.x, event.y )
+        ( self.snapped_x, self.snapped_y ) = snap_to_grid( [ event.x, event.y ] )
         self.drag_x_start = self.snapped_x
         self.drag_y_start = self.snapped_y
 
@@ -177,7 +180,7 @@ class sm_state_layout():
             outline = "#888888" )
     
     def drag_motion( self, event ):
-        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        ( new_x, new_y ) = snap_to_grid( [ event.x, event.y ] )
         
         # self.snapped_[x|y] is the previous mouse drag / resize point, but on grid.
         if new_x != self.snapped_x or new_y != self.snapped_y:
@@ -198,10 +201,11 @@ class sm_state_layout():
     def drag_stop( self, event ):
         self.parent.canvas.delete( self.curr_outline )
 
-        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        ( new_x, new_y ) = snap_to_grid( [ event.x, event.y ] )
         
-        # self.snapped_[x|y] is the previous mouse drag / resize point, but on grid.
+        # self.drag_[x|y]_start is the starting mouse drag / resize point, but on grid.
         if new_x != self.drag_x_start or new_y != self.drag_y_start:
+            move_vect = [ new_x - self.drag_x_start, new_y - self.drag_y_start ]
             new_x1 = self.x1_start + new_x - self.drag_x_start
             new_y1 = self.y1_start + new_y - self.drag_y_start
             new_x2 = new_x1 + self.x2_start - self.x1_start
@@ -210,17 +214,18 @@ class sm_state_layout():
             #set_layout = ccd_model.get_state_layout( self.model )
             #print( f'sm set {set_layout}' )
 
-            self.parent.reroute_paths( self )
+            self.parent.adjust_paths_to_move( self, move_vect )
             self.parent.paint()
     
     def size_motion( self, event ):
-        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        ( new_x, new_y ) = snap_to_grid( [ event.x, event.y ] )
 
         # Make sure the resulting size of the window is still valid.
-        if ( new_x < self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ] ):
-            new_x  = self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ]
-        if ( new_y < self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ] ):
-            new_y  = self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ]
+        ( min_wid, min_hgt ) = hsm_defaults.get_state_min_size()
+        if ( new_x < self.x1_start + min_wid ):
+            new_x  = self.x1_start + min_wid
+        if ( new_y < self.y1_start + min_hgt ):
+            new_y  = self.y1_start + min_hgt
         
         # See if the mouse has moved enough to be on a new grid point.
         if new_x != self.snapped_x or new_y != self.snapped_y:
@@ -237,28 +242,26 @@ class sm_state_layout():
     def size_stop( self, event ):
         self.parent.canvas.delete( self.curr_outline )
 
-        ( new_x, new_y ) = snap_to_grid( event.x, event.y )
+        ( new_x, new_y ) = snap_to_grid( [ event.x, event.y ] )
         
         # Make sure the resulting size of the window is still valid.
-        if ( new_x < self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ] ):
-            new_x  = self.x1_start + hsm_defaults.SM_OUTLINE_MIN[ 'w' ]
-        if ( new_y < self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ] ):
-            new_y  = self.y1_start + hsm_defaults.SM_OUTLINE_MIN[ 'h' ]
+        ( min_wid, min_hgt ) = hsm_defaults.get_state_min_size()
+        if ( new_x < self.x1_start + min_wid ):
+            new_x  = self.x1_start + min_wid
+        if ( new_y < self.y1_start + min_hgt ):
+            new_y  = self.y1_start + min_hgt
         
         if new_x != self.x2_start or new_y != self.y2_start:
             # Make sure the resulting size of the window is still valid.
-            proposed_wid = self.snapped_x - self.x1_start
-            proposed_hgt = self.snapped_y - self.y1_start
-            if proposed_wid >= hsm_defaults.SM_OUTLINE_MIN[ 'w' ] and proposed_hgt >= hsm_defaults.SM_OUTLINE_MIN[ 'h' ]:
-                x1 = self.x1_start
-                y1 = self.y1_start
-                x2 = new_x
-                y2 = new_y
-                
-                ccd_model.set_state_layout( self.model, ( x1, y1, x2, y2 ) )
-                set_layout = ccd_model.get_state_layout( self.model )
-                print( f'sm size {set_layout}' )
-                self.parent.paint()
+            x1 = self.x1_start
+            y1 = self.y1_start
+            x2 = new_x
+            y2 = new_y
+            
+            ccd_model.set_state_layout( self.model, ( x1, y1, x2, y2 ) )
+            set_layout = ccd_model.get_state_layout( self.model )
+            #print( f'sm size {set_layout}' )
+            self.parent.paint()
         
     def paint( self ):
         ( x1, y1, x2, y2 ) = ccd_model.get_state_layout( self.model )
@@ -474,9 +477,10 @@ class sm_layout( tk.Frame ):
                 #print( f" {state_name} - {state}" )
                 transitions = ccd_model.get_transitions( state )
                 if transitions:
-                    #print( f"  tr = { transitions }" )
-                    for transition_name, transition in transitions.items():
-                        path = transition.get( hsm_defaults.RSVD_PATH )
+                    #print( f"480  transitions = { transitions }" )
+                    for transition in transitions:
+                        #print( f"482  type( transition ) = {type( transition )}" )
+                        path = ccd_model.get_transition_path( transition )
                         if path is None:
                             #print( f"1. {state_name} - {state}" )
                             dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
@@ -559,6 +563,7 @@ class sm_layout( tk.Frame ):
     #    clean_path.append( path[ -1 ] )
     #    return clean_path
 
+    '''
     def get_trans_list( self ) -> list:
         transition_list = []
         # Start at the top level of the model.
@@ -572,6 +577,7 @@ class sm_layout( tk.Frame ):
                         #path = transition.get( RSVD_PATH )
                         #if path is not None:
         return transition_list
+    '''
 
     # This just gives the simplest default path.
     #   Find x and y mid-points on each state.
@@ -643,25 +649,18 @@ class sm_layout( tk.Frame ):
 
         for state in self.state_widgets:
             # Paint each state.
+            #print( f"state.model={state.model}" )
             state.paint()
         
-            # Then add the transitions.
-            #print( f"state.model={state.model}" )
-            if state.name == hsm_defaults.RSVD_FINAL:
-                # The final state can have no transitions out of it.
-                assert( hsm_defaults.RSVD_TRAN not in state.model )
-            else:
-                # General case.
+            # Then paint the transitions.
+            if state.name != hsm_defaults.RSVD_FINAL:
                 # Get the transition info.
-                transitions = state.model.get( hsm_defaults.RSVD_TRAN )
+                transitions = ccd_model.get_transitions( state.model )
                 if transitions:
-                    for transition_name, transition in transitions.items():
-                        if state.name == hsm_defaults.RSVD_START:
-                            assert( len( transitions ) == 1 )
-                            assert( hsm_defaults.RSVD_AUTO in transitions )
+                    for transition in transitions:
                         #print( f"tr paint = {transition}" )
                         # See if a path is provided.
-                        path = transition.get( hsm_defaults.RSVD_PATH )
+                        path = ccd_model.get_transition_path( transition )
                         for point_idx in range( len( path ) - 1 ):
                             src_pt = path[ point_idx + 0 ]
                             dst_pt = path[ point_idx + 1 ]
@@ -669,57 +668,57 @@ class sm_layout( tk.Frame ):
                             arrow = "none"
                             if point_idx == len( path ) - 2:
                                 arrow = "last"
-                            #print( f'paint sf = {src_pt[ "x" ]}, {src_pt[ "y" ]}, {dst_pt[ "x" ]}, {dst_pt[ "y" ]}, {self.line_size}, {arrow}' )
+                            #print( f'paint sf = {src_pt[ 0 ]}, {src_pt[ 1 ]}, {dst_pt[ 0 ]}, {dst_pt[ 1 ]}, {self.line_size}, {arrow}' )
                             self.canvas.create_line(
-                                src_pt[ "x" ], src_pt[ "y" ], 
-                                dst_pt[ "x" ], dst_pt[ "y" ], 
+                                src_pt[ 0 ], src_pt[ 1 ], 
+                                dst_pt[ 0 ], dst_pt[ 1 ], 
                                 width = self.line_size, arrow = arrow )
 
-    # This method is for internal use only to facilitate a recursive tree traversal.
-    # Call reroute_paths() instead.
-    def reroute_changed_paths( self, model: dict ) -> dict:
-        #print( json.dumps( model, indent = 2 ) )
 
-        # Check all states to see if any enter this state.
-        
-        ## Start at the top level of the model.
-        #states = model.get( hsm_defaults.RSVD_STATES, {} )
-        #if states:
-        #    for state_name, state in states.items():
-        #        
-        #        # Does this state have the changed_state as a destination?
-        #        #print( f"Checking... {state_name}   against   {self.changed_state.name}" )
-        #        if state.get( hsm_defaults.RSVD_TRAN ):
-        #            transitions = dict( state.get( hsm_defaults.RSVD_TRAN ) )
-        #            for transition_name, transition in transitions.items():
-        #                path = transition.get( hsm_defaults.RSVD_PATH )
-        #                if path is not None:
-        #                    dst_state_name = transition.get( hsm_defaults.RSVD_DEST )
-        #                    if dst_state_name:
-        #                        dst_state = model[ hsm_defaults.RSVD_STATES ][ dst_state_name ]
-        #                        if self.changed_state.name == state_name or dst_state_name == self.changed_state.name:
-        #                            #print( f"Updating path from {state_name} to {dst_state_name}" )
-        #                            path = self.find_default_path( state, transition, dst_state )
-        #                            changed_model[ hsm_defaults.RSVD_STATES ][ state_name ][ hsm_defaults.RSVD_TRAN ][ transition_name ][ hsm_defaults.RSVD_PATH ] = path
-        #    changed_model[ hsm_defaults.RSVD_STATES ][ state_name ] = state
-            
-        return changed_model
+    def adjust_paths_to_move( self, moved_state: object, move_vect: list ) -> None:
+        assert( isinstance( moved_state, sm_state_layout )
+             or isinstance( moved_state, sm_start_final_state_layout ) )
+        if ( not ccd_model.is_valid_2d_point( move_vect ) ):
+            return
 
-    def reroute_paths( self, changed_state: object ) -> dict:
-        assert( type( changed_state ) is sm_state_layout
-             or type( changed_state ) is sm_start_final_state_layout )
-        self.changed_state = changed_state
-        #print( f"changed_state = '{self.changed_state.name}'" )
-        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
+        moved_state_tree_path = ccd_model.get_tree_path( moved_state.model )
+        #print( f'moved_state_tree_path = {json.dumps( moved_state_tree_path, indent = 2 )}' )
 
-        # !!!! Can't do this! It changes the type from ccd_model_cl to dict! !!!!
+        # !!!! Can't do it this way! It changes the type from ccd_model_cl to dict! !!!!
         #ccd_model.curr_model = self.reroute_changed_paths( ccd_model.curr_model )
 
-        state_path = [ "Counting Seconds" ]
-        #sub_states = ccd_model.curr_model.get_substate_paths( state_path ) # -> list[ ccd_state_path ]
-        state = ccd_model.curr_model.get_state_reference( state_path )
-        #print( f'state {state_path} = {state}' )
-        # An empty list means states at the root/top level.
-        sub_states = ccd_model.curr_model.get_substate_paths( [] )
-        
-        #print( json.dumps( ccd_model.curr_model, indent = 2 ) )
+        # Get a complete list of transitions currently within the model.
+        all_transitions = ccd_model.get_transitions_recurse( ccd_model.curr_model )
+        #print( f'691 all_transitions = {json.dumps( all_transitions, indent = 2 )}' )
+
+        for transition in all_transitions:
+            # Search the model for any transitions which either leave or enter the changed state.
+            path_to_adjust = ccd_model.get_transition_path( transition )
+            src_tree_path = ccd_model.get_transition_src( transition )
+            dst_tree_path = ccd_model.get_transition_dest( transition )
+            src_matched = False
+            indexes_to_adjust = []
+            if ccd_model.compare_tree_paths( moved_state_tree_path, src_tree_path ):
+                # Since the altered state is the source, we adjust the first point in the path.
+                #print( f'src_tree_path = {json.dumps( src_tree_path, indent = 2 )}' )
+                indexes_to_adjust.append( 0 )
+                src_matched = True
+
+            if ccd_model.compare_tree_paths( moved_state_tree_path, dst_tree_path ):
+                # Since the altered state is the destination, we adjust the last point in the path.
+                #print( f'dst_tree_path = {json.dumps( dst_tree_path, indent = 2 )}' )
+                indexes_to_adjust.append( -1 )
+
+                # Check for a self-transition, in which case adjust all the path points.
+                if src_matched:
+                    for idx in range( 1, len( path_to_adjust ) - 1 ):
+                        indexes_to_adjust.append( idx )
+
+            if ( len( indexes_to_adjust ) > 0 ):
+                for idx in indexes_to_adjust:
+                    old_point = ccd_model.get_path_point( transition, idx )
+                    new_point = [ old_point[ 0 ] + move_vect[ 0 ], old_point[ 1 ] + move_vect[ 1 ] ]
+                    ccd_model.set_path_point( transition, idx, new_point )
+                adjusted_path = ccd_model.get_transition_path( transition )
+
+        #print( f'724 curr_model = {json.dumps( ccd_model.curr_model, indent = 2 )}' )

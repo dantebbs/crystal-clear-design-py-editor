@@ -1,68 +1,88 @@
 {
     "states": {
         "start": {
-            "tran": {
-                "auto": {
-                    "dest": "Counting Seconds",
+            "tree": [
+                "start"
+            ],
+            "transitions": [
+                {
+                    "src": [
+                        "start"
+                    ],
+                    "dest": [
+                        "Counting Seconds"
+                    ],
                     "path": [
-                        {
-                            "x": 390,
-                            "y": 40
-                        },
-                        {
-                            "x": 490,
-                            "y": 100
-                        }
+                        [
+                            110,
+                            20
+                        ],
+                        [
+                            220,
+                            80
+                        ]
                     ]
                 }
-            },
+            ],
             "layout": {
-                "x": 370,
-                "y": 30,
-                "w": 20,
-                "h": 20
+                "x1": 90,
+                "y1": 10,
+                "x2": 110,
+                "y2": 30
             }
         },
         "Counting Seconds": {
+            "tree": [
+                "Counting Seconds"
+            ],
             "entry": [
                 "update_display(seconds_counted)"
             ],
-            "tran": {
-                "timeout_1000ms": {
-                    "dest": "Counting Seconds",
+            "transitions": [
+                {
+                    "condition": "timeout_1000ms",
+                    "src": [
+                        "Counting Seconds"
+                    ],
+                    "dest": [
+                        "Counting Seconds"
+                    ],
                     "path": [
-                        {
-                            "x": 590,
-                            "y": 330
-                        },
-                        {
-                            "x": 610,
-                            "y": 330
-                        },
-                        {
-                            "x": 610,
-                            "y": 350
-                        },
-                        {
-                            "x": 590,
-                            "y": 350
-                        }
+                        [
+                            320,
+                            320
+                        ],
+                        [
+                            340,
+                            320
+                        ],
+                        [
+                            340,
+                            340
+                        ],
+                        [
+                            320,
+                            340
+                        ]
                     ]
                 }
-            },
+            ],
             "layout": {
-                "x": 390,
-                "y": 100,
-                "w": 200,
-                "h": 460
+                "x1": 120,
+                "y1": 80,
+                "x2": 320,
+                "y2": 540
             }
         },
         "Interloper": {
+            "tree": [
+                "Interloper"
+            ],
             "layout": {
-                "x": 10,
-                "y": 230,
-                "w": 130,
-                "h": 240
+                "x1": 10,
+                "y1": 560,
+                "x2": 330,
+                "y2": 610
             }
         }
     }
